@@ -2,7 +2,7 @@ from google import genai
 from google.genai import types
 import time
 
-client = genai.Client(api_key="AIzaSyA_Y3eq0u3QSXcShSPnJ57hPn7DTddVXdU")
+client = genai.Client(api_key="API KEY")
 
 chat = client.chats.create(
     model="gemini-2.5-flash",
