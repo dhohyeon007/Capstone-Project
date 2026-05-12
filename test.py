@@ -3,7 +3,7 @@ from google.genai import types
 import time
 import os
 
-client = genai.Client(api_key="AIzaSyAJZhZ9jB78ffzKXpc22aaOomM_9Kb5HSE")
+client = genai.Client(api_key="API KEY")
 
 print("[ Gemini Response Bot ]")
 print("*" * 50)
