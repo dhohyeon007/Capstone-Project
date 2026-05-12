@@ -2,38 +2,63 @@ from google import genai
 from google.genai import types
 import time
 import os
+import sys
+import io
 
-client = genai.Client(api_key="API KEY")
+save_path = os.getcwd() + "/README.md"
+
+os.environ["PYTHONUTF8"] = "1"
+if sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
+client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
 
 print("[ Gemini Response Bot ]")
 print("*" * 50)
 
 while True:
-    user_input = input("Upload: ")
+    current_dir = os.getcwd()
+    print(f"Current Directory: {current_dir}")
 
-    if user_input.lower() == "q":
-        print("Exiting the chat. Goodbye!")
-        break
-
-    if not user_input.strip() or not os.path.isfile(user_input):
-        print("Please enter a valid file path.")
-        continue
+    items = os.listdir(current_dir)
+    print("0. .. (Go to parent directory)")
+    for i, item in enumerate(items, 1):
+        print(f"{i}. {item}")
 
     try:
-        file = client.files.upload(file=user_input)
-        abs_path = os.path.abspath(user_input)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=["파일 요약해줘.", abs_path],
-        )
-        
-        with open("response.txt", "w") as f:
-            f.write(response.text)
+        choice = int(input("Select a file or directory (enter the number): "))
 
-    except Exception as e:
-        if "503" in str(e):
-            print("waiting...")
-            time.sleep(5)
+        if choice == -1:
+            break
+        elif choice == 0:
+            os.chdir("..")
             continue
+
+        selected_name = items[choice - 1]
+        full_path = os.path.abspath(selected_name)
+
+        if os.path.isdir(full_path):
+            os.chdir(full_path)
+        
         else:
-            print(f"An error occurred: {e}")
+            try:
+                file = client.files.upload(file=full_path)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=["캡스톤 프로젝트 주제 공고 pdf를 보고 예상 프로젝트 결과물에 대한 README.md 파일을 작성해줘.", file],
+                )
+                
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(response.text)
+
+            except Exception as e:
+                if "503" in str(e):
+                    print("waiting...")
+                    time.sleep(5)
+                    continue
+                else:
+                    print(f"An error occurred: {e}")
+                
+    except (ValueError, IndexError):
+        print("Invalid input. Please enter a valid number.")
