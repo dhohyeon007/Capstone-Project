@@ -1,8 +1,16 @@
 from google import genai
 from google.genai import types
 import time
+import os
+import io
+import sys
 
-client = genai.Client(api_key="AIzaSyA_Y3eq0u3QSXcShSPnJ57hPn7DTddVXdU")
+os.environ["PYTHONUTF8"] = "1"
+if sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
+client = genai.Client(api_key="API KEY")
 
 chat = client.chats.create(
     model="gemini-2.5-flash",
@@ -19,7 +27,7 @@ while True:
 
     if user_input.lower() == "q":
         print("Exiting the chat. Goodbye!")
-        break
+        sys.exit(0)
 
     if not user_input.strip():
         print("Please enter a valid message.")
@@ -27,6 +35,9 @@ while True:
 
     try:
         response = chat.send_message(user_input)
+        with open("gemini_responses.md", "w", encoding="utf-8") as file:
+            file.write(response.text)
+
         print(f"Gemini: {response.text}")
 
     except Exception as e:
@@ -34,5 +45,6 @@ while True:
             print("waiting...")
             time.sleep(5)
             continue
+
         else:
             print(f"An error occurred: {e}")
