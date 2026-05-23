@@ -1,11 +1,9 @@
 from pathlib import Path
 from sub import select_file, call_gemini_api
 from PIL import Image
-import os
 import pymupdf4llm as p4l
 import json
 import sys
-import time
 import concurrent.futures
 # import pandas as pd
 
@@ -19,7 +17,7 @@ def process_chunk(item, schema, prompt):
         contents.extend(item["images"])
 
     try:
-        response = call_gemini_api(contents, schema)
+        response = call_gemini_api('gemini-2.0-flash', contents, schema)
         if response.text:
             result_json = json.loads(response.text)
             print(f"[{chunk_id}] 추출 완료")
@@ -39,9 +37,9 @@ def merge_data(json_list, schema):
     """
 
     contents = [reduce_prompt, json_str]
-    
+
     try:
-        response = call_gemini_api(contents, schema)
+        response = call_gemini_api('gemini-1.5-pro', contents, schema)
 
         if response.text:
             print("병합 완료")

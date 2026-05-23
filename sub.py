@@ -1,11 +1,8 @@
 import os
 import sys
-from tenacity import retry, wait_random_exponential, stop_after_attempt, retry_if_exception
+from tenacity import retry, wait_random_exponential, stop_after_delay, retry_if_exception
 from google import genai
 from google.genai import types
-
-
-client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
 
 
 def select_file():
@@ -39,6 +36,14 @@ def select_file():
                 print("Invalid choice. Please try again.")
 
 
+def print_retry_message(retry_state):
+    wait_time = retry_state.next_action.sleep
+    attempt_num = retry_state.attempt_number
+    exception = retry_state.outcome.exception()
+
+    print(f"{wait_time}초 대기 후 재시도합니다. (누적 시도: {attempt_num}회) (사유: {exception})")
+
+
 def is_retryable_error(exception):
     error_str = str(exception).lower()
     return any(keyword in error_str for keyword in ["429", "503"])
@@ -46,12 +51,14 @@ def is_retryable_error(exception):
 
 @retry(
         wait=wait_random_exponential(multiplier=1, max=60),
-        stop=stop_after_attempt(),
-        retry=retry_if_exception(is_retryable_error)
+        stop=stop_after_delay(1800),
+        retry=retry_if_exception(is_retryable_error),
+        before_sleep=print_retry_message
 )
-def call_gemini_api(contents, schema):
+def call_gemini_api(model, contents, schema):
+    client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
     return client.models.generate_content(
-        model='gemini-3-pro-preview',
+        model=model,
         contents=contents,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
