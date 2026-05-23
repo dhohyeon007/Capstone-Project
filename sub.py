@@ -1,12 +1,11 @@
-# from google import genai
 import os
 import sys
-import fitz
-import pandas as pd
-import json
+from tenacity import retry, wait_random_exponential, stop_after_attempt, retry_if_exception
+from google import genai
+from google.genai import types
 
 
-# client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
+client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
 
 
 def select_file():
@@ -40,11 +39,23 @@ def select_file():
                 print("Invalid choice. Please try again.")
 
 
-def refine_table_for_llm(pdf_path, page_num):
-    pdf_doc = fitz.open(pdf_path)
-    page = pdf_doc[page_num]
-    tables = page.find_tables()
+def is_retryable_error(exception):
+    error_str = str(exception).lower()
+    return any(keyword in error_str for keyword in ["429", "503"])
 
-    if not tables:
-        return None
-    
+
+@retry(
+        wait=wait_random_exponential(multiplier=1, max=60),
+        stop=stop_after_attempt(),
+        retry=retry_if_exception(is_retryable_error)
+)
+def call_gemini_api(contents, schema):
+    return client.models.generate_content(
+        model='gemini-3-pro-preview',
+        contents=contents,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=schema,
+            temperature=0.0
+        )
+    )
