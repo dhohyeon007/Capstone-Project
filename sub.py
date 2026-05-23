@@ -31,10 +31,11 @@ def select_file():
             try:
                 index = int(choice) - 1
                 selected_item = items[index]
+                target_path = os.path.join(current_dir, selected_item)
                 if os.path.isdir(selected_item):
-                    current_dir = os.path.join(current_dir, selected_item)
+                    current_dir = target_path
                 else:
-                    return os.path.join(current_dir, selected_item)
+                    return target_path
             except (ValueError, IndexError):
                 print("Invalid choice. Please try again.")
 
