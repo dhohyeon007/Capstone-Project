@@ -1,6 +1,7 @@
 from pathlib import Path
-from sub import select_file, call_gemini_api
+from sub import select_file, LLMCallManager
 from PIL import Image
+from google.genai import types
 import pymupdf4llm as p4l
 import json
 import sys
@@ -8,73 +9,9 @@ import concurrent.futures
 # import pandas as pd
 
 
-def process_chunk(item, schema, prompt):
-    chunk_id = item["chunk_id"]
-    print(f"[{chunk_id}] 쓰레드 작업 시작...")
-
-    contents = [prompt, item["text"]]
-    if item["images"]:
-        contents.extend(item["images"])
-
-    try:
-        response = call_gemini_api('gemini-2.0-flash', contents, schema)
-        if response.text:
-            result_json = json.loads(response.text)
-            print(f"[{chunk_id}] 추출 완료")
-
-            return result_json
-        
-    except Exception as e:
-        print(f"[{chunk_id}] 오류 발생: {e}")
-
-        return {}
-    
-
-def merge_data(json_list, schema):
-    json_str = json.dumps(json_list, ensure_ascii=False, indent=2)
-
-    reduce_prompt = """
-    """
-
-    contents = [reduce_prompt, json_str]
-
-    try:
-        response = call_gemini_api('gemini-1.5-pro', contents, schema)
-
-        if response.text:
-            print("병합 완료")
-            return json.load(response.text)
-    
-    except Exception as e:
-        print(f"병합 중 오류 발생: {e}")
-        return {}
-
-
-def main():
-    parent_dir = Path("data")
-    text_dir = parent_dir / "text"
-    image_dir = parent_dir / "images"
-    # table_dir = parent_dir / "tables"
-
-    parent_dir.mkdir(exist_ok=True)
-    text_dir.mkdir(exist_ok=True)
-    image_dir.mkdir(exist_ok=True)
-    # table_dir.mkdir(exist_ok=True)
-
-    pdf_file_path = select_file()
-    pdf_name = Path(pdf_file_path).name
-
-    print("PDF 마크다운 변환 및 이미지 추출 중...")
-    md_pages = p4l.to_markdown(pdf_file_path,
-                               page_chunks=True,
-                               write_images=True,
-                               image_path=str(image_dir)
-                               )
-
-    chunk_size = 7
+def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
     payload_queue = []
 
-    print("텍스트 청킹 및 로컬 이미지 매핑 중...")
     for i in range(0, len(md_pages), chunk_size):
         chunk_batch = md_pages[i:i + chunk_size]
 
@@ -107,13 +44,16 @@ def main():
             "text": merged_text,
             "images": valid_images
             })
-        
+
+
+def load_json_schema():
     schema_file_path = "extraction_schema.json"
     
     try:
         with open(schema_file_path, "r", encoding="utf-8") as f:
-            external_schema = json.load(f)
+            json_schema = json.load(f)
             print(f"외부 스키마 로드 완료: {schema_file_path}")
+            return json_schema
     except FileNotFoundError:
         print(f"스키마 파일을 찾을 수 없습니다: {schema_file_path}")
         sys.exit(1)
@@ -121,13 +61,98 @@ def main():
         print(f"스키마 파일의 JSON 형식이 잘못되었습니다.")
         sys.exit(1)
 
-    map_prompt = """
+
+def extract_data(llm_manager, item, schema):
+    llm_manager = llm_manager
+
+    chunk_id = item["chunk_id"]
+    print(f"[{chunk_id}] 쓰레드 작업 시작...")
+
+    prompt = """
+    제공된 JSON 스키마에 따라 정확하게 데이터를 추출하시오.
     """
+
+    contents = [prompt, item["text"]]
+    if item["images"]:
+        contents.extend(item["images"])
+
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=schema,
+        temperature=0.0
+    )
+
+    try:
+        response = llm_manager.call_llm_api('gemma-4-31b-it', contents, config)
+        if response.text:
+            result_json = json.loads(response.text)
+            print(f"[{chunk_id}] 추출 완료")
+
+            return result_json
+        
+    except Exception as e:
+        print(f"[{chunk_id}] 오류 발생: {e}")
+
+        return {}
+    
+
+def merge_data(llm_manager, json_list, schema):
+    json_str = json.dumps(json_list, ensure_ascii=False, indent=2)
+
+    prompt = """
+    """
+
+    contents = [prompt, json_str]
+
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=schema,
+        temperature=0.0
+    )
+
+    try:
+        response = llm_manager.call_gemini_api('gemma-4-31b-it', contents, config)
+
+        if response.text:
+            print("병합 완료")
+            return json.load(response.text)
+    
+    except Exception as e:
+        print(f"병합 중 오류 발생: {e}")
+        return {}
+
+
+def main():
+    parent_dir = Path("data")
+    text_dir = parent_dir / "text"
+    image_dir = parent_dir / "images"
+
+    parent_dir.mkdir(exist_ok=True)
+    text_dir.mkdir(exist_ok=True)
+    image_dir.mkdir(exist_ok=True)
+
+    pdf_file_path = select_file()
+    pdf_name = Path(pdf_file_path).name
+
+    print("PDF 마크다운 변환 및 이미지 추출 중...")
+    md_pages = p4l.to_markdown(pdf_file_path,
+                               page_chunks=True,
+                               write_images=True,
+                               image_path=str(image_dir)
+                               )
+
+    print("텍스트 청킹 및 로컬 이미지 매핑 중...")
+    payload_queue = chunk_contents(text_dir, image_dir, pdf_name, md_pages)    
+
+    print("JSON 스키마 로드 중...")
+    json_schema = load_json_schema()
+
+    llm_manager = LLMCallManager()
 
     print("병렬 데이터 추출 시작...")
     all_json_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_chunk = {executor.submit(process_chunk, item, external_schema, map_prompt): item for item in payload_queue}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema): item for item in payload_queue}
 
         for future in concurrent.futures.as_completed(future_to_chunk):
             try:
@@ -138,7 +163,7 @@ def main():
                 print("처리 중 오류 발생")
 
     print("데이터 병합 시작...")
-    final_data = merge_data(all_json_results, external_schema)
+    final_data = merge_data(llm_manager, all_json_results, json_schema)
 
 
 if __name__ == "__main__":
