@@ -1,7 +1,8 @@
 import os
 import sys
 import time
-import queue
+import threading
+from collections import deque
 from tenacity import Retrying, wait_random_exponential, stop_after_delay, retry_if_exception
 from google import genai
 # from google.genai import types
@@ -11,24 +12,26 @@ class LLMCallManager:
     def __init__(self, max_requests_per_minute=14):
         self.client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
         self.max_requests = max_requests_per_minute
-        self.request_queue = queue.Queue()
+        self.request_queue = deque()
+        self.lock = threading.Lock()
 
 
     def acquire_slot(self):
-        current_time = time.time()
+        with self.lock:
+            current_time = time.time()
 
-        while self.request_queue[0] and current_time - self.request_queue[0] > 60:
-            self.request_queue.get()
+            while self.request_queue and current_time - self.request_queue[0] > 60:
+                self.request_queue.popleft()
 
-        if self.request_queue.qsize() >= self.max_requests:
-            wait_time = current_time - self.request_queue[0]
+            if len(self.request_queue) >= self.max_requests:
+                wait_time = 60 - (current_time - self.request_queue[0])
 
-            if wait_time > 0:
-                time.sleep(wait_time)
+                if wait_time > 0:
+                    time.sleep(wait_time)
 
-            return self.acquire_slot()
-        
-        self.request_queue.put(time.time())
+                return self.acquire_slot()
+            
+            self.request_queue.append(time.time())
 
 
     @staticmethod
@@ -92,22 +95,3 @@ def select_file():
                     return target_path
             except (ValueError, IndexError):
                 print("다시 시도하십시오.")
-
-
-# @retry(
-#         wait=wait_random_exponential(multiplier=1, max=60),
-#         stop=stop_after_delay(1800),
-#         retry=retry_if_exception(is_retryable_error),
-#         before_sleep=print_retry_message
-# )
-# def call_gemini_api(model, contents, schema):
-#     client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
-#     return client.models.generate_content(
-#         model=model,
-#         contents=contents,
-#         config=types.GenerateContentConfig(
-#             response_mime_type="application/json",
-#             response_schema=schema,
-#             temperature=0.0
-#         )
-#     )
