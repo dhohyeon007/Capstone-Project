@@ -44,6 +44,8 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
             "text": merged_text,
             "images": valid_images
             })
+        
+        return payload_queue
 
 
 def load_json_schema():
@@ -111,11 +113,11 @@ def merge_data(llm_manager, json_list, schema):
     )
 
     try:
-        response = llm_manager.call_gemini_api('gemma-4-31b-it', contents, config)
+        response = llm_manager.call_llm_api('gemma-4-31b-it', contents, config)
 
         if response.text:
             print("병합 완료")
-            return json.load(response.text)
+            return json.loads(response.text)
     
     except Exception as e:
         print(f"병합 중 오류 발생: {e}")
