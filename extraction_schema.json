@@ -1,0 +1,314 @@
+{
+  "type": "OBJECT",
+  "description": "지자체 탄소중립·녹색성장 기본계획 문서 핵심 정보 추출 스키마",
+  "properties": {
+    "document_info": {
+      "type": "OBJECT",
+      "description": "문서 기본 식별 정보",
+      "properties": {
+        "document_title": { "type": "STRING", "description": "문서의 전체 제목" },
+        "publisher": { "type": "STRING", "description": "발행기관명 (원문 표기 그대로)" },
+        "publication_year": { "type": "INTEGER", "description": "문서 발행 연도" },
+        "document_type": { "type": "STRING", "description": "문서 종류 (예: basic_plan)" },
+        "region_name": { "type": "STRING", "description": "대상 지자체명" },
+        "local_government_type": { "type": "STRING", "description": "지자체 유형 (광역/기초 등)" },
+        "plan_period": {
+          "type": "OBJECT",
+          "properties": {
+            "start_year": { "type": "INTEGER" },
+            "end_year": { "type": "INTEGER" }
+          }
+        },
+        "base_year": { "type": "INTEGER", "description": "기준연도 (기본 2018)" },
+        "target_year": { "type": "INTEGER", "description": "목표연도 (기본 2030)" }
+      },
+      "required": ["document_title", "publisher", "plan_period", "base_year", "target_year"]
+    },
+    "regional_context": {
+      "type": "OBJECT",
+      "description": "지역 환경요인 및 현황",
+      "properties": {
+        "natural_environment": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "population_social": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "economic_industrial": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "energy_status": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "에너지 소비 및 신재생에너지 보급 현황" }
+      }
+    },
+    "ghg_inventory": {
+      "type": "OBJECT",
+      "description": "온실가스 배출·흡수 현황",
+      "properties": {
+        "base_year": { "type": "INTEGER" },
+        "unit": { "type": "STRING", "description": "배출량 단위 (예: tCO2eq, 천톤CO2eq 등)" },
+        "total_emissions": { "type": "NUMBER", "description": "총배출량" },
+        "net_emissions": { "type": "NUMBER", "description": "순배출량" },
+        "direct_emissions": { "type": "NUMBER", "description": "직접배출량" },
+        "indirect_emissions": { "type": "NUMBER", "description": "간접배출량" },
+        "local_emissions": { "type": "NUMBER", "description": "지역배출량" },
+        "absorption": { "type": "NUMBER", "description": "흡수량" },
+        "yearly_emissions": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "year": { "type": "INTEGER" },
+              "emissions": { "type": "NUMBER" }
+            }
+          }
+        },
+        "sector_emissions": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "sector_name": { 
+                "type": "STRING", 
+                "enum": ["건물", "수송", "폐기물", "농축산", "흡수원", "에너지 생산", "시민협력", "적응"] 
+              },
+              "emissions": { "type": "NUMBER" }
+            }
+          }
+        },
+        "management_authority_inventory": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "sector_name": { 
+                "type": "STRING",
+                "enum": ["건물", "수송", "폐기물", "농축산", "흡수원", "에너지 생산", "시민협력", "적응"]
+              },
+              "emissions": { "type": "NUMBER" }
+            }
+          },
+          "description": "지자체 관리권한 내 온실가스 인벤토리"
+        }
+      },
+      "required": ["base_year", "unit", "total_emissions"]
+    },
+    "ghg_projection": {
+      "type": "OBJECT",
+      "description": "온실가스 배출·흡수 전망",
+      "properties": {
+        "methodology": { "type": "STRING" },
+        "model": { "type": "STRING" },
+        "assumptions": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "bau_projection": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "year": { "type": "INTEGER" },
+              "emissions": { "type": "NUMBER" }
+            }
+          }
+        },
+        "sector_projection": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "sector_name": { 
+                "type": "STRING",
+                "enum": ["건물", "수송", "폐기물", "농축산", "흡수원", "에너지 생산", "시민협력", "적응"]
+              },
+              "year": { "type": "INTEGER" },
+              "emissions": { "type": "NUMBER" }
+            }
+          }
+        }
+      }
+    },
+    "reduction_targets": {
+      "type": "OBJECT",
+      "description": "중장기 온실가스 감축목표",
+      "properties": {
+        "base_year_emissions": { "type": "NUMBER" },
+        "target_year": { "type": "INTEGER" },
+        "target_emissions": { "type": "NUMBER" },
+        "reduction_amount": { "type": "NUMBER" },
+        "reduction_rate_percent": { "type": "NUMBER" },
+        "sector_targets": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "sector_name": { 
+                "type": "STRING",
+                "enum": ["건물", "수송", "폐기물", "농축산", "흡수원", "에너지 생산", "시민협력", "적응"]
+              },
+              "target_emissions": { "type": "NUMBER" },
+              "reduction_amount": { "type": "NUMBER" }
+            }
+          }
+        },
+        "yearly_targets": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "year": { "type": "INTEGER" },
+              "target_emissions": { "type": "NUMBER" }
+            }
+          }
+        }
+      },
+      "required": ["base_year_emissions", "target_year", "target_emissions"]
+    },
+    "projects": {
+      "type": "ARRAY",
+      "description": "부문별 온실가스 감축대책 및 세부 사업",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "project_id": { "type": "STRING" },
+          "sector": { 
+            "type": "STRING",
+            "enum": ["건물", "수송", "폐기물", "농축산", "흡수원", "에너지 생산", "시민협력", "적응"]
+          },
+          "project_name": { "type": "STRING" },
+          "department": { "type": "STRING" },
+          "cooperating_department": { "type": "STRING" },
+          "project_period": { "type": "STRING" },
+          "project_description": { "type": "STRING" },
+          "performance_indicator": { "type": "STRING" },
+          "annual_targets": {
+            "type": "ARRAY",
+            "items": {
+              "type": "OBJECT",
+              "properties": { "year": { "type": "INTEGER" }, "target_value": { "type": "STRING" } }
+            }
+          },
+          "annual_activity_volume": {
+            "type": "ARRAY",
+            "items": {
+              "type": "OBJECT",
+              "properties": { "year": { "type": "INTEGER" }, "volume": { "type": "STRING" } }
+            }
+          },
+          "reduction_effect": {
+            "type": "ARRAY",
+            "items": {
+              "type": "OBJECT",
+              "properties": { "year": { "type": "INTEGER" }, "reduction_amount": { "type": "NUMBER" } }
+            }
+          },
+          "budget_plan": {
+            "type": "ARRAY",
+            "items": {
+              "type": "OBJECT",
+              "properties": { "year": { "type": "INTEGER" }, "amount": { "type": "NUMBER" } }
+            }
+          },
+          "evidence": {
+            "type": "ARRAY",
+            "description": "추출 근거 (evidence_schema 완전 적용)",
+            "items": {
+              "type": "OBJECT",
+              "properties": {
+                "field_path": { "type": "STRING" },
+                "extracted_value": { "type": "STRING" },
+                "source_text": { "type": "STRING" },
+                "page_number": { "type": "INTEGER" },
+                "table_number": { "type": "STRING" },
+                "figure_number": { "type": "STRING" },
+                "section_title": { "type": "STRING" },
+                "source_file_name": { "type": "STRING" },
+                "extraction_method": { "type": "STRING" },
+                "confidence": { "type": "NUMBER" },
+                "note": { "type": "STRING" }
+              }
+            }
+          }
+        },
+        "required": ["project_name"]
+      }
+    },
+    "financial_plan": {
+      "type": "OBJECT",
+      "description": "재정투자 계획",
+      "properties": {
+        "total_budget": { "type": "NUMBER" },
+        "sector_budget": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": { 
+              "sector_name": { 
+                "type": "STRING",
+                "enum": ["건물", "수송", "폐기물", "농축산", "흡수원", "에너지 생산", "시민협력", "적응"]
+              }, 
+              "amount": { "type": "NUMBER" } 
+            }
+          }
+        },
+        "annual_budget": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": { "year": { "type": "INTEGER" }, "amount": { "type": "NUMBER" } }
+          }
+        },
+        "project_budget": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": { "project_name": { "type": "STRING" }, "amount": { "type": "NUMBER" } }
+          }
+        }
+      }
+    },
+    "implementation_management": {
+      "type": "OBJECT",
+      "description": "이행관리 체계",
+      "properties": {
+        "governance_structure": { "type": "STRING" },
+        "responsible_departments": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "monitoring_cycle": { "type": "STRING" },
+        "feedback_process": { "type": "STRING" },
+        "evaluation_items": { "type": "ARRAY", "items": { "type": "STRING" } }
+      }
+    },
+    "traceability": {
+      "type": "OBJECT",
+      "description": "추출 결과의 근거 및 품질 추적",
+      "properties": {
+        "citations": {
+          "type": "ARRAY",
+          "description": "evidence_schema 기반 인용 정보",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "field_path": { "type": "STRING" },
+              "extracted_value": { "type": "STRING" },
+              "source_text": { "type": "STRING" },
+              "page_number": { "type": "INTEGER" },
+              "table_number": { "type": "STRING" },
+              "figure_number": { "type": "STRING" },
+              "section_title": { "type": "STRING" },
+              "source_file_name": { "type": "STRING" },
+              "extraction_method": { "type": "STRING" },
+              "confidence": { "type": "NUMBER" },
+              "note": { "type": "STRING" }
+            }
+          }
+        },
+        "quality_flags": {
+          "type": "OBJECT",
+          "description": "quality_flags_schema 기반 품질 검증 정보",
+          "properties": {
+            "missing_required_fields": { "type": "ARRAY", "items": { "type": "STRING" } },
+            "unit_missing": { "type": "BOOLEAN" },
+            "unit_inferred": { "type": "BOOLEAN" },
+            "base_year_missing": { "type": "BOOLEAN" },
+            "target_year_missing": { "type": "BOOLEAN" },
+            "sum_mismatch": { "type": "BOOLEAN" },
+            "ocr_suspected": { "type": "BOOLEAN" },
+            "manual_review_required": { "type": "BOOLEAN" }
+          }
+        }
+      }
+    }
+  },
+  "required": ["document_info", "ghg_inventory", "reduction_targets"]
+}

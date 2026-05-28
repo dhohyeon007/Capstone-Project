@@ -40,7 +40,7 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
                     print(f"이미지 로드 실패 ({img_path.name})")
 
         payload_queue.append({
-            "chunk_id":f"{start_page}-{end_page}",
+            "chunk_id":f"{start_page+1}-{end_page+1}",
             "text": merged_text,
             "images": valid_images
             })
