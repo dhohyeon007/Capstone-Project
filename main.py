@@ -2,6 +2,7 @@ from pathlib import Path
 from sub import select_file, LLMCallManager
 from PIL import Image
 from google.genai import types
+import pymupdf as fitz
 import pymupdf4llm as p4l
 import json
 import sys
@@ -9,13 +10,40 @@ import concurrent.futures
 # import pandas as pd
 
 
+def safe_to_markdown(pdf_file_path, image_dir):
+    try:
+        pdf_doc = fitz.open(pdf_file_path)
+        total_pages = len(pdf_doc)
+    except Exception as e:
+        print(f"파일을 열 수 없습니다: {e}")
+        sys.exit(1)
+
+    markdown_results = []
+
+    for page_num in range(total_pages):
+        try:
+            md_text = p4l.to_markdown(
+                pdf_file_path,
+                pages=[page_num],
+                write_images=True,
+                image_path=str(image_dir)
+            )
+            markdown_results.append(md_text)
+        except Exception as e:
+            if "invalid key in dict" in str(e).lower():
+                print(f"{page_num + 1}번째 페이지 손상됨. 스킵합니다.")
+            else:
+                print(f"{page_num + 1}번째 페이지 알 수 없는 오류: {e}")
+
+    return markdown_results
+
+
 def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
     payload_queue = []
 
     for i in range(0, len(md_pages), chunk_size):
-        chunk_batch = md_pages[i:i + chunk_size]
+        md_chunks = md_pages[i:i + chunk_size]
 
-        md_chunks = [p["text"] for p in chunk_batch]
         merged_text = "\n\n---\n\n".join(md_chunks)
 
         start_page = i
@@ -26,7 +54,7 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
 
         valid_images = []
 
-        for j in range(len(chunk_batch)):
+        for j in range(len(md_chunks)):
             absolute_page_num = i + j
             formatted_page = f"{absolute_page_num + 1:04d}"
             pattern = f"{pdf_name}-{formatted_page}-*.*"
@@ -85,7 +113,7 @@ def extract_data(llm_manager, item, schema):
     )
 
     try:
-        response = llm_manager.call_llm_api('gemma-4-31b-it', contents, config)
+        response = llm_manager.call_llm_api('gemini-3.5-flash', contents, config)
         if response.text:
             result_json = json.loads(response.text)
             print(f"[{chunk_id}] 추출 완료")
@@ -102,6 +130,7 @@ def merge_data(llm_manager, json_list, schema):
     json_str = json.dumps(json_list, ensure_ascii=False, indent=2)
 
     prompt = """
+    제공된 JSON 스키마에 따라 정확하게 데이터를 병합하시오.
     """
 
     contents = [prompt, json_str]
@@ -113,7 +142,7 @@ def merge_data(llm_manager, json_list, schema):
     )
 
     try:
-        response = llm_manager.call_llm_api('gemma-4-31b-it', contents, config)
+        response = llm_manager.call_llm_api('gemma-4-26b-a4b-it', contents, config)
 
         if response.text:
             print("병합 완료")
@@ -137,11 +166,7 @@ def main():
     pdf_name = Path(pdf_file_path).name
 
     print("PDF 마크다운 변환 및 이미지 추출 중...")
-    md_pages = p4l.to_markdown(pdf_file_path,
-                               page_chunks=True,
-                               write_images=True,
-                               image_path=str(image_dir)
-                               )
+    md_pages = safe_to_markdown(pdf_file_path, image_dir)
 
     print("텍스트 청킹 및 로컬 이미지 매핑 중...")
     payload_queue = chunk_contents(text_dir, image_dir, pdf_name, md_pages)    
@@ -166,6 +191,21 @@ def main():
 
     print("데이터 병합 시작...")
     final_data = merge_data(llm_manager, all_json_results, json_schema)
+
+    with open('final_data', 'r', encoding='utf-8') as file:
+        json.dump(final_data, file, ensure_ascii=False, indent=4)
+
+    for filepath in text_dir.iterdir():
+        if filepath.is_file():
+            filepath.unlink()
+    text_dir.rmdir()
+
+    for filepath in image_dir.iterdir():
+        if filepath.is_file():
+            filepath.unlink()
+    image_dir.rmdir()
+
+    parent_dir.rmdir()
 
 
 if __name__ == "__main__":
