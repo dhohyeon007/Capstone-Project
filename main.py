@@ -1,5 +1,5 @@
 from pathlib import Path
-from sub import select_file, LLMCallManager
+from sub import LLMCallManager, select_file, start_program, exit_program
 from PIL import Image
 from google.genai import types
 import pymupdf as fitz
@@ -62,9 +62,11 @@ def load_json_schema():
             return json_schema
     except FileNotFoundError:
         print(f"스키마 파일을 찾을 수 없습니다: {schema_file_path}")
+        exit_program()
         sys.exit(1)
     except json.JSONDecodeError:
         print(f"스키마 파일의 JSON 형식이 잘못되었습니다.")
+        exit_program()
         sys.exit(1)
 
 
@@ -96,16 +98,14 @@ def extract_data(llm_manager, item, schema):
     )
 
     try:
-        response = llm_manager.call_llm_api('gemini-2.5-flash', contents, config)
+        response = llm_manager.call_llm_api(contents, config)
         if response.text:
             result_json = json.loads(response.text)
             print(f"[{chunk_id}] 추출 완료")
-
             return result_json
         
     except Exception as e:
         print(f"[{chunk_id}] 오류 발생: {e}")
-
         return {}
     
 
@@ -125,7 +125,7 @@ def merge_data(llm_manager, json_list, schema):
     )
 
     try:
-        response = llm_manager.call_llm_api('gemini-2.5-flash', contents, config)
+        response = llm_manager.call_llm_api(contents, config)
 
         if response.text:
             print("병합 완료")
@@ -137,13 +137,7 @@ def merge_data(llm_manager, json_list, schema):
 
 
 def main():
-    parent_dir = Path("data")
-    text_dir = parent_dir / "text"
-    image_dir = parent_dir / "images"
-
-    parent_dir.mkdir(exist_ok=True)
-    text_dir.mkdir(exist_ok=True)
-    image_dir.mkdir(exist_ok=True)
+    parent_dir, text_dir, image_dir = start_program()
 
     pdf_file_path = select_file()
     pdf_name = Path(pdf_file_path).name
@@ -183,17 +177,7 @@ def main():
     with open('final_data.json', 'w', encoding='utf-8') as file:
         json.dump(final_data, file, ensure_ascii=False, indent=4)
 
-    for filepath in text_dir.iterdir():
-        if filepath.is_file():
-            filepath.unlink()
-    text_dir.rmdir()
-
-    for filepath in image_dir.iterdir():
-        if filepath.is_file():
-            filepath.unlink()
-    image_dir.rmdir()
-
-    parent_dir.rmdir()
+    exit_program()
 
 
 if __name__ == "__main__":
