@@ -38,7 +38,7 @@ class LLMCallManager:
                 if wait_time > 0:
                     time.sleep(wait_time)
 
-                return self.acquire_slot()
+                self.request_queue.popleft()
             
             self.request_queue.append(time.time())
 
@@ -60,7 +60,7 @@ class LLMCallManager:
     @staticmethod
     def is_retryable_error(exception):
         error_str = str(exception).lower()
-        return any(keyword in error_str for keyword in ["429", "503"])
+        return any(keyword in error_str for keyword in ["503"])
 
 
     def call_llm_api(self, contents, config):
@@ -84,6 +84,7 @@ class LLMCallManager:
                             contents=contents,
                             config=config
                         )
+                    
             except Exception as e:
                 if "429" in str(e) or "RESOURCE EXHAUSTED" in str(e):
                     print(f"[{current_model}] 429 에러 발생 (일일 할당량 소진 판단).")
@@ -95,7 +96,7 @@ class LLMCallManager:
                         exit_program()
                         sys.exit(1)
 
-                    next_model = self.model_list(self.current_model_idx)
+                    next_model = self.model_list[self.current_model_idx]
                     print(f"[{next_model}] 모델로 변경합니다.")
                     continue
 
