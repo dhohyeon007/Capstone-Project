@@ -49,7 +49,7 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
             "images": valid_images
             })
         
-        return payload_queue
+    return payload_queue
 
 
 def load_json_schema():
@@ -96,7 +96,7 @@ def extract_data(llm_manager, item, schema):
     )
 
     try:
-        response = llm_manager.call_llm_api('gemini-3.5-flash', contents, config)
+        response = llm_manager.call_llm_api('gemini-2.5-flash', contents, config)
         if response.text:
             result_json = json.loads(response.text)
             print(f"[{chunk_id}] 추출 완료")
@@ -125,7 +125,7 @@ def merge_data(llm_manager, json_list, schema):
     )
 
     try:
-        response = llm_manager.call_llm_api('gemma-4-26b-a4b-it', contents, config)
+        response = llm_manager.call_llm_api('gemini-2.5-flash', contents, config)
 
         if response.text:
             print("병합 완료")
@@ -166,7 +166,7 @@ def main():
 
     print("병렬 데이터 추출 시작...")
     all_json_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema): item for item in payload_queue}
 
         for future in concurrent.futures.as_completed(future_to_chunk):
@@ -180,7 +180,7 @@ def main():
     print("데이터 병합 시작...")
     final_data = merge_data(llm_manager, all_json_results, json_schema)
 
-    with open('final_data', 'r', encoding='utf-8') as file:
+    with open('final_data.json', 'w', encoding='utf-8') as file:
         json.dump(final_data, file, ensure_ascii=False, indent=4)
 
     for filepath in text_dir.iterdir():
