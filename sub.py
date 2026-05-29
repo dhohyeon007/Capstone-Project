@@ -12,6 +12,7 @@ from google import genai
 # from google.genai import types
 
 from pathlib import Path
+import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -174,7 +175,7 @@ def prologue():
     parent_dir = Path("data")
     text_dir = parent_dir / "text"
     image_dir = parent_dir / "images"
-    json_dir = parent_dir / "json"
+    json_dir = Path("json")
 
     parent_dir.mkdir(exist_ok=True)
     text_dir.mkdir(exist_ok=True)
@@ -187,23 +188,10 @@ def prologue():
 def epilogue():
     """임시 파일 및 디렉토리 삭제"""
     parent_dir = Path("data")
-    text_dir = parent_dir / "text"
-    image_dir = parent_dir / "images"
-    json_dir = parent_dir / "json"
 
-    for filepath in text_dir.iterdir():
-        if filepath.is_file():
-            filepath.unlink()
-    text_dir.rmdir()
-
-    for filepath in image_dir.iterdir():
-        if filepath.is_file():
-            filepath.unlink()
-    image_dir.rmdir()
-
-    # for filepath in json_dir.iterdir():
-    #     if filepath.is_file():
-    #         filepath.unlink()
-    # json_dir.rmdir()
-
-    # parent_dir.rmdir()
+    if parent_dir.exists() and parent_dir.is_dir():
+        try:
+            shutil.rmtree(parent_dir)
+            logger.info("data 디렉토리 삭제 완료.")
+        except Exception as e:
+            logger.error(f"디렉토리 삭제 중 오류 발생: {e}")
