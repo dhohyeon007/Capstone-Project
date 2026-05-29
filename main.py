@@ -159,7 +159,8 @@ def main():
         pdf_file_path,
         page_chunks=True,
         write_images=True,
-        image_path=str(image_dir)
+        image_path=str(image_dir),
+        show_progress=True
     )
 
     logger.info("텍스트 청킹 및 로컬 이미지 매핑 중...")
