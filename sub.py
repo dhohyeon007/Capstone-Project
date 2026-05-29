@@ -141,18 +141,21 @@ def start_program():
     parent_dir = Path("data")
     text_dir = parent_dir / "text"
     image_dir = parent_dir / "images"
+    json_dir = parent_dir / "json"
 
     parent_dir.mkdir(exist_ok=True)
     text_dir.mkdir(exist_ok=True)
     image_dir.mkdir(exist_ok=True)
+    json_dir.mkdir(exist_ok=True)
 
-    return parent_dir, text_dir, image_dir
+    return text_dir, image_dir, json_dir
 
 
 def exit_program():
     parent_dir = Path("data")
     text_dir = parent_dir / "text"
     image_dir = parent_dir / "images"
+    json_dir = parent_dir / "json"
 
     for filepath in text_dir.iterdir():
         if filepath.is_file():
@@ -164,4 +167,9 @@ def exit_program():
             filepath.unlink()
     image_dir.rmdir()
 
-    parent_dir.rmdir()
+    # for filepath in json_dir.iterdir():
+    #     if filepath.is_file():
+    #         filepath.unlink()
+    # json_dir.rmdir()
+
+    # parent_dir.rmdir()

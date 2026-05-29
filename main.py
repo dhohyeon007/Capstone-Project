@@ -70,7 +70,7 @@ def load_json_schema():
         sys.exit(1)
 
 
-def extract_data(llm_manager, item, schema):
+def extract_data(llm_manager, item, schema, json_dir):
     llm_manager = llm_manager
 
     chunk_id = item["chunk_id"]
@@ -102,6 +102,10 @@ def extract_data(llm_manager, item, schema):
         if response.text:
             result_json = json.loads(response.text)
             print(f"[{chunk_id}] 추출 완료")
+
+            # DEBUG
+            json_dir.write_text(response.text, encoding="utf-8")
+
             return result_json
         
     except Exception as e:
@@ -137,7 +141,7 @@ def merge_data(llm_manager, json_list, schema):
 
 
 def main():
-    parent_dir, text_dir, image_dir = start_program()
+    text_dir, image_dir, json_dir = start_program()
 
     pdf_file_path = select_file()
     pdf_name = Path(pdf_file_path).name
@@ -161,7 +165,7 @@ def main():
     print("병렬 데이터 추출 시작...")
     all_json_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema): item for item in payload_queue}
+        future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema, json_dir): item for item in payload_queue}
 
         for future in concurrent.futures.as_completed(future_to_chunk):
             try:
@@ -174,8 +178,8 @@ def main():
     print("데이터 병합 시작...")
     final_data = merge_data(llm_manager, all_json_results, json_schema)
 
-    with open('final_data.json', 'w', encoding='utf-8') as file:
-        json.dump(final_data, file, ensure_ascii=False, indent=4)
+    final_data_str = json.dumps(final_data, ensure_ascii=False, indent=4)
+    json_dir.write_text(final_data_str, encoding="utf-8")
 
     exit_program()
 
