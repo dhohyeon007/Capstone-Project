@@ -6,12 +6,18 @@ import pymupdf as fitz
 import pymupdf4llm as p4l
 import logging
 import json
+import sys
 import concurrent.futures
 # import pandas as pd
 
-
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("Project.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename="main.log", level=logging.INFO)
 
 
 fitz.TOOLS.mupdf_display_errors(False)
@@ -111,13 +117,14 @@ def extract_data(llm_manager, item, schema, json_dir):
             logger.info(f"[{chunk_id}] 추출 완료")
 
             # DEBUG
-            json_dir.write_text(response.text, encoding="utf-8")
+            json_path = json_dir / f"chunk_{chunk_id}.json"
+            json_path.write_text(response.text, encoding="utf-8")
 
             return result_json
         
     except Exception as e:
         print(f"[{chunk_id}] 오류 발생: {e}")
-        return {}
+        raise e
     
 
 def merge_data(llm_manager, json_list, schema):
@@ -154,7 +161,6 @@ def main():
     pdf_file_path = select_file()
     pdf_name = Path(pdf_file_path).name
 
-    logger.info("PDF 마크다운 변환 및 이미지 추출 중...")
     md_pages = p4l.to_markdown(
         pdf_file_path,
         page_chunks=True,
@@ -182,15 +188,17 @@ def main():
                 if result_dict:
                     all_json_results.append(result_dict)
             except Exception as e:
-                logger.error("처리 중 오류 발생")
+                logger.error(f"처리 중 오류 발생: {e}")
+                logger.info("임시 파일을 안전하게 정리하고 종료합니다.")
                 epilogue()
-                raise e
+                sys.exit(1)
 
     logger.info("데이터 병합 시작...")
     final_data = merge_data(llm_manager, all_json_results, json_schema)
 
     final_data_str = json.dumps(final_data, ensure_ascii=False, indent=4)
-    json_dir.write_text(final_data_str, encoding="utf-8")
+    json_path = json_dir / f"{pdf_name}.json"
+    json_path.write_text(final_data_str, encoding="utf-8")
 
     epilogue()
 
