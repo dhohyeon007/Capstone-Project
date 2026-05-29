@@ -9,7 +9,7 @@ from google import genai
 
 
 class LLMCallManager:
-    def __init__(self, max_requests_per_minute=14):
+    def __init__(self, max_requests_per_minute=4):
         self.client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
         self.max_requests = max_requests_per_minute
         self.request_queue = deque()
