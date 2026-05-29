@@ -36,6 +36,7 @@ class LLMCallManager:
                 wait_time = 60 - (current_time - self.request_queue[0])
 
                 if wait_time > 0:
+                    print(f"RPM Break: {wait_time}초 대기")
                     time.sleep(wait_time)
 
                 self.request_queue.popleft()
@@ -65,7 +66,6 @@ class LLMCallManager:
 
     def call_llm_api(self, contents, config):
         while self.current_model_idx < len(self.model_list):
-            current_model = self.model_list[self.current_model_idx]
             self.acquire_slot()
 
             retryer = Retrying(
@@ -78,6 +78,7 @@ class LLMCallManager:
 
             try:
                 for attempt in retryer:
+                    current_model = self.model_list[self.current_model_idx]
                     with attempt:
                         return self.client.models.generate_content(
                             model=current_model,
