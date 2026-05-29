@@ -21,7 +21,7 @@ logging.basicConfig(filename="sub.log", level=logging.WARNING)
 def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
     """최대 허용 시간(5분) 내에서 지수 백오프로 재시도하는 데코레이터"""
     def deco(func):
-        @wraps
+        @wraps()
         def wrapper(*args, **kwargs):
             start_time = time.time()
             retries = 0
@@ -53,8 +53,8 @@ def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
                 logger.warning(f"{wait_time:.2f}초 대기 후 재시도합니다. (누적 시도: {retries + 1}회) (사유: {e})")
                 time.sleep(wait_time)
 
-            return wrapper
-        return deco
+        return wrapper
+    return deco
 
 
 class LLMCallManager:
