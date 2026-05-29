@@ -1,19 +1,24 @@
 from pathlib import Path
-from sub import LLMCallManager, select_file, start_program, exit_program
+from sub import LLMCallManager, select_file, prologue, epilogue
 from PIL import Image
 from google.genai import types
 import pymupdf as fitz
 import pymupdf4llm as p4l
+import logging
 import json
-import sys
 import concurrent.futures
 # import pandas as pd
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(filename="main.log", level=logging.INFO)
 
 
 fitz.TOOLS.mupdf_display_errors(False)
 
 
 def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
+    """페이지 단위 청크 분할 및 이미지 매핑"""
     payload_queue = []
 
     for i in range(0, len(md_pages), chunk_size):
@@ -41,7 +46,7 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
                     img_obj = Image.open(img_path)
                     valid_images.append(img_obj)
                 except Exception as e:
-                    print(f"이미지 로드 실패 ({img_path.name})")
+                    logger.warning(f"이미지 로드 실패 ({img_path.name})")
 
         payload_queue.append({
             "chunk_id":f"{start_page+1}-{end_page+1}",
@@ -53,28 +58,30 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
 
 
 def load_json_schema():
+    """스키마 파일 로드"""
     schema_file_path = "extraction_schema.json"
     
     try:
         with open(schema_file_path, "r", encoding="utf-8") as f:
             json_schema = json.load(f)
-            print(f"외부 스키마 로드 완료: {schema_file_path}")
+            logger.info(f"외부 스키마 로드 완료: {schema_file_path}")
             return json_schema
-    except FileNotFoundError:
-        print(f"스키마 파일을 찾을 수 없습니다: {schema_file_path}")
-        exit_program()
-        sys.exit(1)
-    except json.JSONDecodeError:
-        print(f"스키마 파일의 JSON 형식이 잘못되었습니다.")
-        exit_program()
-        sys.exit(1)
+    except FileNotFoundError as fe:
+        logger.error(f"스키마 파일을 찾을 수 없습니다: {schema_file_path}")
+        epilogue()
+        raise fe
+    except json.JSONDecodeError as je:
+        logger.error(f"스키마 파일의 JSON 형식이 잘못되었습니다.")
+        epilogue()
+        raise je
 
 
 def extract_data(llm_manager, item, schema, json_dir):
+    """청크로부터 JSON 형태의 데이터 추출"""
     llm_manager = llm_manager
 
     chunk_id = item["chunk_id"]
-    print(f"[{chunk_id}] 쓰레드 작업 시작...")
+    logger.info(f"[{chunk_id}] 쓰레드 작업 시작...")
 
     prompt = """
     제공된 JSON 스키마에 따라 정확하게 데이터를 추출하시오.
@@ -101,7 +108,7 @@ def extract_data(llm_manager, item, schema, json_dir):
         response = llm_manager.call_llm_api(contents, config)
         if response.text:
             result_json = json.loads(response.text)
-            print(f"[{chunk_id}] 추출 완료")
+            logger.info(f"[{chunk_id}] 추출 완료")
 
             # DEBUG
             json_dir.write_text(response.text, encoding="utf-8")
@@ -114,6 +121,7 @@ def extract_data(llm_manager, item, schema, json_dir):
     
 
 def merge_data(llm_manager, json_list, schema):
+    """추출된 JSON 형태의 데이터 병합"""
     json_str = json.dumps(json_list, ensure_ascii=False, indent=2)
 
     prompt = """
@@ -132,21 +140,21 @@ def merge_data(llm_manager, json_list, schema):
         response = llm_manager.call_llm_api(contents, config)
 
         if response.text:
-            print("병합 완료")
+            logger.info("병합 완료")
             return json.loads(response.text)
     
     except Exception as e:
-        print(f"병합 중 오류 발생: {e}")
+        logger.warning(f"병합 중 오류 발생: {e}")
         return {}
 
 
 def main():
-    text_dir, image_dir, json_dir = start_program()
+    text_dir, image_dir, json_dir = prologue()
 
     pdf_file_path = select_file()
     pdf_name = Path(pdf_file_path).name
 
-    print("PDF 마크다운 변환 및 이미지 추출 중...")
+    logger.info("PDF 마크다운 변환 및 이미지 추출 중...")
     md_pages = p4l.to_markdown(
         pdf_file_path,
         page_chunks=True,
@@ -154,15 +162,15 @@ def main():
         image_path=str(image_dir)
     )
 
-    print("텍스트 청킹 및 로컬 이미지 매핑 중...")
+    logger.info("텍스트 청킹 및 로컬 이미지 매핑 중...")
     payload_queue = chunk_contents(text_dir, image_dir, pdf_name, md_pages)    
 
-    print("JSON 스키마 로드 중...")
+    logger.info("JSON 스키마 로드 중...")
     json_schema = load_json_schema()
 
     llm_manager = LLMCallManager()
 
-    print("병렬 데이터 추출 시작...")
+    logger.info("병렬 데이터 추출 시작...")
     all_json_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema, json_dir): item for item in payload_queue}
@@ -173,15 +181,17 @@ def main():
                 if result_dict:
                     all_json_results.append(result_dict)
             except Exception as e:
-                print("처리 중 오류 발생")
+                logger.error("처리 중 오류 발생")
+                epilogue()
+                raise e
 
-    print("데이터 병합 시작...")
+    logger.info("데이터 병합 시작...")
     final_data = merge_data(llm_manager, all_json_results, json_schema)
 
     final_data_str = json.dumps(final_data, ensure_ascii=False, indent=4)
     json_dir.write_text(final_data_str, encoding="utf-8")
 
-    exit_program()
+    epilogue()
 
 
 if __name__ == "__main__":
