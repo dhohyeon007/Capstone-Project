@@ -15,8 +15,14 @@ from pathlib import Path
 import shutil
 
 
+logging.basicConfig(
+    level=logging.WARNING,
+    handlers=[
+        logging.FileHandler("Project.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename="sub.log", level=logging.WARNING)
 
 
 def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
@@ -53,7 +59,7 @@ def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
                     if wait_time > remaining_time:
                         wait_time = remaining_time
 
-                    logger.warning(f"{wait_time:.2f}초 대기 후 재시도합니다. (누적 시도: {retries + 1}회) (사유: {e})")
+                    logger.warning(f"{wait_time:.2f}초 대기 후 재시도합니다. (사유: {e})")
                     time.sleep(wait_time)
 
         return wrapper
@@ -126,8 +132,7 @@ class LLMCallManager:
                     self.current_model_idx += 1
                     if self.current_model_idx >= len(self.model_list):
                         logger.error("더 이상 사용할 수 있는 하위 모델이 없습니다. 종료합니다.")
-                        epilogue()
-                        raise e
+                        raise RuntimeError("모든 모델 소진됨")
 
                     next_model = self.model_list[self.current_model_idx]
                     logger.warning(f"[{next_model}] 모델로 변경합니다.")
@@ -135,7 +140,6 @@ class LLMCallManager:
 
                 else:
                     logger.error(f"에러 발생: {e}")
-                    epilogue()
                     raise e
 
 
