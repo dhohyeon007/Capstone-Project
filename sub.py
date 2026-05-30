@@ -1,31 +1,116 @@
 import os
 import sys
-import time
-import threading
+import logging
+
+from functools import wraps
 from collections import deque
-from tenacity import Retrying, wait_random_exponential, stop_after_delay, retry_if_exception
+import json
+import threading
+import time
+import random
+
 from google import genai
-from pathlib import Path
 # from google.genai import types
+
+from pathlib import Path
+import shutil
+
+
+logger = logging.getLogger(__name__)
+
+
+def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
+    """최대 허용 시간(5분) 내에서 지수 백오프로 재시도하는 데코레이터"""
+
+    def deco(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            retries = 0
+
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e)
+
+                    if "429" in error_str or "RESOURCE EXHAUSTED" in error_str:
+                        is_rpd_limit = False
+
+                        try:
+                            json_start_idx = error_str.find('{')
+                            if json_start_idx != -1:
+                                error_json_str = error_str[json_start_idx:]
+                                error_dict = json.loads(error_json_str.replace("'", '"'))
+
+                                details = error_dict.get('error', {}).get('details', [])
+                                for detail in details:
+                                    violations = detail.get('violations', [])
+                                    for violation in violations:
+                                        quota_id = violation.get('quotaId', '').lower()
+
+                                        if 'perday' in quota_id:
+                                            is_rpd_limit = True
+                                            break
+
+                                    if is_rpd_limit:
+                                        break
+                            
+                        except Exception as parse_error:
+                            logger.debug(f"429 에러 JSON 파싱 실패: {parse_error}")
+
+                        error_str_lower = error_str.lower()
+                        if not is_rpd_limit and ("perday" in error_str_lower or "per day" in error_str_lower):
+                            is_rpd_limit = True
+
+                        if is_rpd_limit:
+                            raise e
+                        else:
+                            pass
+                    
+                    elif not any(code in error_str for code in ["500", "502", "503", "504"]):
+                        raise e
+                    
+                    elapsed_time = time.time() - start_time
+                    if elapsed_time >= max_duration:
+                        logger.error("최대 허용 시간 초과.")
+                        raise e
+                    
+                    retries += 1
+                    jitter = random.uniform(-0.2, 0.2)
+                    exp_delay = base_delay * (2 ** (retries - 1))
+                    wait_time = min((exp_delay + jitter), max_delay)
+
+                    remaining_time = max_duration - elapsed_time
+                    if wait_time > remaining_time:
+                        wait_time = remaining_time
+
+                    logger.warning(f"{wait_time:.2f}초 대기 후 재시도합니다. (사유: {e})")
+                    time.sleep(wait_time)
+
+        return wrapper
+    return deco
 
 
 class LLMCallManager:
-    def __init__(self, max_requests_per_minute=4):
+    def __init__(self):
         self.client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
         self.model_list = [
-            'gemini-3.5-flash',
-            'gemini-3-flash-preview',
-            'gemini-3.1-flash-lite',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite'
+            {'name': 'gemini-3.5-flash', 'rpm': 5},
+            {'name': 'gemini-3-flash-preview', 'rpm': 5},
+            {'name': 'gemini-3.1-flash-lite', 'rpm': 15},
+            {'name': 'gemini-2.5-flash', 'rpm': 5},
+            {'name': 'gemini-2.5-flash-lite', 'rpm': 10},
         ]
         self.current_model_idx = 0
-        self.max_requests = max_requests_per_minute
+        self.max_requests = self.model_list[self.current_model_idx]['rpm']
         self.request_queue = deque()
         self.lock = threading.Lock()
 
 
     def acquire_slot(self):
+        """RPM 제한 방어 코드"""
+
         with self.lock:
             current_time = time.time()
 
@@ -36,7 +121,7 @@ class LLMCallManager:
                 wait_time = 60 - (current_time - self.request_queue[0])
 
                 if wait_time > 0:
-                    print(f"RPM Break: {wait_time}초 대기")
+                    logger.warning(f"RPM Break: {wait_time}초 대기")
                     time.sleep(wait_time)
 
                 self.request_queue.popleft()
@@ -44,70 +129,65 @@ class LLMCallManager:
             self.request_queue.append(time.time())
 
 
-    def switch_model(self):
-        if self.current_model_idx < len(self.model_list):
-            self.current_model_idx += 1
+    @retry_with_backoff(
+            max_duration=300,
+            base_delay=1,
+            max_delay=10
+    )
+    def execute_api_call(self, current_model, contents, config):
+        """실제 API 호출하는 내부 메서드(재시도 로직 적용)"""
 
-
-    @staticmethod
-    def print_retry_message(retry_state):
-        wait_time = retry_state.next_action.sleep
-        attempt_num = retry_state.attempt_number
-        exception = retry_state.outcome.exception()
-
-        print(f"{wait_time}초 대기 후 재시도합니다. (누적 시도: {attempt_num}회) (사유: {exception})")
-
-
-    @staticmethod
-    def is_retryable_error(exception):
-        error_str = str(exception).lower()
-        return any(keyword in error_str for keyword in ["503"])
+        return self.client.models.generate_content(
+            model=current_model,
+            contents=contents,
+            config=config
+        )
 
 
     def call_llm_api(self, contents, config):
-        while self.current_model_idx < len(self.model_list):
+        """외부에서 호출하는 메서드(모델 스위칭 담당)"""
+
+        while True:
             self.acquire_slot()
 
-            retryer = Retrying(
-                wait=wait_random_exponential(multiplier=1, max=10),
-                stop=stop_after_delay(1800),
-                retry=retry_if_exception(self.is_retryable_error),
-                before_sleep=self.print_retry_message,
-                reraise=True
-            )
+            with self.lock:
+                if self.current_model_idx >= len(self.model_list):
+                    raise RuntimeError("모든 모델 소진됨")
+                
+                current_model = self.model_list[self.current_model_idx]['name']
+                attempted_idx = self.current_model_idx
 
             try:
-                for attempt in retryer:
-                    current_model = self.model_list[self.current_model_idx]
-                    with attempt:
-                        return self.client.models.generate_content(
-                            model=current_model,
-                            contents=contents,
-                            config=config
-                        )
+                return self.execute_api_call(current_model, contents, config)                
                     
             except Exception as e:
-                if "429" in str(e) or "RESOURCE EXHAUSTED" in str(e):
-                    print(f"[{current_model}] 429 에러 발생 (일일 할당량 소진 판단).")
+                if "429" in str(e) or "RESOURCE EXHAUSTED" in str(e).upper():
+                    with self.lock:
+                        if self.current_model_idx == attempted_idx:
+                            logger.warning(f"[{current_model}] 일일 할당량 소진: {e}")
+                            self.current_model_idx += 1
 
-                    self.current_model_idx += 1
+                            if self.current_model_idx >= len(self.model_list):
+                                logger.error("더 이상 사용할 수 있는 하위 모델이 없습니다. 종료합니다.")
+                                raise RuntimeError("모든 모델 소진됨")
 
-                    if self.current_model_idx >= len(self.model_list):
-                        print("더 이상 사용할 수 있는 하위 모델이 없습니다. 작동을 종료합니다.")
-                        exit_program()
-                        sys.exit(1)
+                            next_model = self.model_list[self.current_model_idx]['name']
+                            self.max_requests = self.model_list[self.current_model_idx]['rpm']
+                            self.request_queue.clear()
+                            logger.warning(f"[{next_model}] 모델로 변경합니다.")
+                        else:
+                            pass
 
-                    next_model = self.model_list[self.current_model_idx]
-                    print(f"[{next_model}] 모델로 변경합니다.")
                     continue
 
                 else:
-                    print(f"에러 발생: {e}")
-                    exit_program()
-                    sys.exit(1)
+                    logger.error(f"에러 발생: {e}")
+                    raise e
 
 
 def select_file():
+    """선택한 파일의 경로 반환"""
+
     current_dir = os.getcwd()
 
     while True:
@@ -122,7 +202,7 @@ def select_file():
 
         choice = input("파일 선택 혹은 디렉토리 이동 (숫자 입력): ")
         if choice == "-1":
-            exit_program()
+            epilogue()
             sys.exit(0)
         elif choice == "0":
             current_dir = os.path.dirname(current_dir)
@@ -137,11 +217,13 @@ def select_file():
                 print("다시 시도하십시오.")
 
 
-def start_program():
+def prologue():
+    """임시 파일 저장 디렉토리 생성"""
+
     parent_dir = Path("data")
     text_dir = parent_dir / "text"
     image_dir = parent_dir / "images"
-    json_dir = parent_dir / "json"
+    json_dir = Path("json")
 
     parent_dir.mkdir(exist_ok=True)
     text_dir.mkdir(exist_ok=True)
@@ -151,25 +233,14 @@ def start_program():
     return text_dir, image_dir, json_dir
 
 
-def exit_program():
+def epilogue():
+    """임시 파일 및 디렉토리 삭제"""
+
     parent_dir = Path("data")
-    text_dir = parent_dir / "text"
-    image_dir = parent_dir / "images"
-    json_dir = parent_dir / "json"
 
-    for filepath in text_dir.iterdir():
-        if filepath.is_file():
-            filepath.unlink()
-    text_dir.rmdir()
-
-    for filepath in image_dir.iterdir():
-        if filepath.is_file():
-            filepath.unlink()
-    image_dir.rmdir()
-
-    # for filepath in json_dir.iterdir():
-    #     if filepath.is_file():
-    #         filepath.unlink()
-    # json_dir.rmdir()
-
-    # parent_dir.rmdir()
+    if parent_dir.exists() and parent_dir.is_dir():
+        try:
+            shutil.rmtree(parent_dir)
+            logger.info("data 디렉토리 삭제 완료.")
+        except Exception as e:
+            logger.error(f"디렉토리 삭제 중 오류 발생: {e}")
