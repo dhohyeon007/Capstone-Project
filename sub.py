@@ -15,13 +15,6 @@ from pathlib import Path
 import shutil
 
 
-logging.basicConfig(
-    level=logging.WARNING,
-    handlers=[
-        logging.FileHandler("Project.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
 logger = logging.getLogger(__name__)
 
 
@@ -150,7 +143,7 @@ class LLMCallManager:
                             pass
 
                     continue
-                
+
                 else:
                     logger.error(f"에러 발생: {e}")
                     raise e
