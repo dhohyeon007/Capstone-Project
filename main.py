@@ -28,7 +28,6 @@ fitz.TOOLS.mupdf_display_errors(False)
 
 def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
     """페이지 단위 청크 분할 및 이미지 매핑"""
-
     payload_queue = []
 
     for i in range(0, len(md_pages), chunk_size):
@@ -69,7 +68,6 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
 
 def load_json_schema():
     """스키마 파일 로드"""
-
     schema_file_path = "extraction_schema.json"
     
     try:
@@ -89,7 +87,6 @@ def load_json_schema():
 
 def extract_data(llm_manager, item, schema, json_dir):
     """청크로부터 JSON 형태의 데이터 추출"""
-
     llm_manager = llm_manager
 
     chunk_id = item["chunk_id"]

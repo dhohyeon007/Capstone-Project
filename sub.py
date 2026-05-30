@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
     """최대 허용 시간(5분) 내에서 지수 백오프로 재시도하는 데코레이터"""
-
     def deco(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -110,7 +109,6 @@ class LLMCallManager:
 
     def acquire_slot(self):
         """RPM 제한 방어 코드"""
-
         with self.lock:
             current_time = time.time()
 
@@ -136,7 +134,6 @@ class LLMCallManager:
     )
     def execute_api_call(self, current_model, contents, config):
         """실제 API 호출하는 내부 메서드(재시도 로직 적용)"""
-
         return self.client.models.generate_content(
             model=current_model,
             contents=contents,
@@ -146,7 +143,6 @@ class LLMCallManager:
 
     def call_llm_api(self, contents, config):
         """외부에서 호출하는 메서드(모델 스위칭 담당)"""
-
         while True:
             self.acquire_slot()
 
@@ -187,7 +183,6 @@ class LLMCallManager:
 
 def select_file():
     """선택한 파일의 경로 반환"""
-
     current_dir = os.getcwd()
 
     while True:
@@ -219,7 +214,6 @@ def select_file():
 
 def prologue():
     """임시 파일 저장 디렉토리 생성"""
-
     parent_dir = Path("data")
     text_dir = parent_dir / "text"
     image_dir = parent_dir / "images"
@@ -235,7 +229,6 @@ def prologue():
 
 def epilogue():
     """임시 파일 및 디렉토리 삭제"""
-
     parent_dir = Path("data")
 
     if parent_dir.exists() and parent_dir.is_dir():
