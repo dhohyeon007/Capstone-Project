@@ -120,8 +120,9 @@ def extract_data(llm_manager, item, schema, json_dir):
             logger.info(f"[{chunk_id}] 추출 완료")
 
             # DEBUG
+            json_str = json.dumps(result_json, ensure_ascii=False, indent=4)
             json_path = json_dir / f"chunk_{chunk_id}.json"
-            json_path.write_text(response.text, encoding="utf-8")
+            json_path.write_text(json_str, encoding="utf-8")
 
             return result_json
         
@@ -136,7 +137,17 @@ def merge_data(llm_manager, json_list, schema):
     json_str = json.dumps(json_list, ensure_ascii=False, indent=2)
 
     prompt = """
-    제공된 JSON 스키마에 따라 정확하게 데이터를 병합하시오.
+    [역할]
+    당신은 데이터 손실 없이 JSON을 병합하는 '무결성 데이터 파이프라인 엔진'입니다.
+
+    [작업]
+    입력된 여러 개의 JSON 데이터(리스트 형식)를 제공된 최종 JSON 스키마에 맞게 단일 JSON으로 완벽하게 병합하십시오.
+
+    [절대 준수 규칙 - 위반 시 치명적인 시스템 오류 발생]
+    1. 무손실 병합(Lossless): 입력된 원본 텍스트의 단어 하나, 조사 하나라도 절대 요약, 생략, 축약하지 마십시오. 100% 원본 그대로 복사(Copy & Paste)해야 합니다.
+    2. 자의적 해석 금지: 문맥을 자연스럽게 만들기 위해 문장을 임의로 연결하거나 재구성하지 마십시오. 원본이 파편화된 문장이더라도 그대로 유지하십시오.
+    3. 배열(Array) 누적: 동일한 키(Key)에 여러 값이 들어갈 수 있는 배열 형태인 경우, 기존 요소들을 덮어쓰거나 대표값 하나로 퉁치지 말고, 모든 요소를 순서대로 누적(Append/Extend) 하십시오.
+    4. 데이터 창조 금지: 최종 스키마에 정의되어 있더라도, 원본 데이터에 없는 내용이라면 임의의 텍스트를 지어내지 말고 `null` 또는 빈 문자열(`""`), 빈 배열(`[]`)로 처리하십시오.
     """
 
     contents = [prompt, json_str]
