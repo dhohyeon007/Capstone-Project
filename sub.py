@@ -67,17 +67,17 @@ def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
 
 
 class LLMCallManager:
-    def __init__(self, max_requests_per_minute=4):
+    def __init__(self):
         self.client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
         self.model_list = [
-            'gemini-3.5-flash',
-            'gemini-3-flash-preview',
-            'gemini-3.1-flash-lite',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite'
+            {'name': 'gemini-3.5-flash', 'rpm': 5},
+            {'name': 'gemini-3-flash-preview', 'rpm': 5},
+            {'name': 'gemini-3.1-flash-lite', 'rpm': 15},
+            {'name': 'gemini-2.5-flash', 'rpm': 5},
+            {'name': 'gemini-2.5-flash-lite', 'rpm': 10},
         ]
         self.current_model_idx = 0
-        self.max_requests = max_requests_per_minute
+        self.max_requests = self.model_list[self.current_model_idx]['rpm']
         self.request_queue = deque()
         self.lock = threading.Lock()
 
@@ -118,26 +118,39 @@ class LLMCallManager:
 
     def call_llm_api(self, contents, config):
         """외부에서 호출하는 메서드(모델 스위칭 담당)"""
-        while self.current_model_idx < len(self.model_list):
-            current_model = self.model_list[self.current_model_idx]
+        while True:
             self.acquire_slot()
+
+            with self.lock:
+                if self.current_model_idx >= len(self.model_list):
+                    raise RuntimeError("모든 모델 소진됨")
+                
+                current_model = self.model_list[self.current_model_idx]['name']
+                attempted_idx = self.current_model_idx
 
             try:
                 return self.execute_api_call(current_model, contents, config)                
                     
             except Exception as e:
                 if "429" in str(e) or "RESOURCE EXHAUSTED" in str(e).upper():
-                    logger.warning(f"[{current_model}] 429 에러 발생 (일일 할당량 소진 판단).")
+                    with self.lock:
+                        if self.current_model_idx == attempted_idx:
+                            logger.warning(f"[{current_model}] 429 에러 발생 (일일 할당량 소진 판단).")
+                            self.current_model_idx += 1
 
-                    self.current_model_idx += 1
-                    if self.current_model_idx >= len(self.model_list):
-                        logger.error("더 이상 사용할 수 있는 하위 모델이 없습니다. 종료합니다.")
-                        raise RuntimeError("모든 모델 소진됨")
+                            if self.current_model_idx >= len(self.model_list):
+                                logger.error("더 이상 사용할 수 있는 하위 모델이 없습니다. 종료합니다.")
+                                raise RuntimeError("모든 모델 소진됨")
 
-                    next_model = self.model_list[self.current_model_idx]
-                    logger.warning(f"[{next_model}] 모델로 변경합니다.")
+                            next_model = self.model_list[self.current_model_idx]['name']
+                            self.max_requests = self.model_list[self.current_model_idx]['rpm']
+                            self.request_queue.clear()
+                            logger.warning(f"[{next_model}] 모델로 변경합니다.")
+                        else:
+                            pass
+
                     continue
-
+                
                 else:
                     logger.error(f"에러 발생: {e}")
                     raise e
