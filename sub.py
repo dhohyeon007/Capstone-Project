@@ -119,7 +119,7 @@ class LLMCallManager:
                 wait_time = 60 - (current_time - self.request_queue[0])
 
                 if wait_time > 0:
-                    logger.warning(f"RPM Break: {wait_time}초 대기")
+                    logger.warning(f"RPM Break: {wait_time:.2f}초 대기")
                     time.sleep(wait_time)
 
                 self.request_queue.popleft()
