@@ -1,30 +1,19 @@
 from pathlib import Path
-from sub import LLMCallManager, select_file, prologue, epilogue
-from PIL import Image
+from sub import setup_environment, LLMCallManager, select_file, prologue, epilogue
 from google.genai import types
-import pymupdf as fitz
 import pymupdf4llm as p4l
 import logging
 import json
 import re
 import sys
+import mimetypes
 import concurrent.futures
 # import pandas as pd
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler("Project.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("google_genai").setLevel(logging.WARNING)
+setup_environment()
+
 logger = logging.getLogger(__name__)
-
-
-fitz.TOOLS.mupdf_display_errors(False)
 
 
 def toc_extraction(llm_manager, md_pages):
@@ -116,8 +105,17 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
 
             for img_path in matched_files:
                 try:
-                    img_obj = Image.open(img_path)
-                    valid_images.append(img_obj)
+                    mime_type, _ = mimetypes.guess_type(str(img_path))
+                    if not mime_type:
+                        mime_type = "image/jpeg"
+
+                    image_bytes = img_path.read_bytes()
+
+                    part = types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=mime_type
+                    )
+                    valid_images.append(part)
                 except Exception as e:
                     logger.warning(f"이미지 로드 실패 ({img_path.name})")
 
@@ -153,7 +151,7 @@ def extract_data(llm_manager, item, schema, json_dir, toc_json):
     """청크로부터 JSON 형태의 데이터 추출"""
     start_p, end_p = map(int, item["chunk_id"].split("-"))
     contexts = get_context_for_chunk(start_p, end_p, toc_json)
-    contexts_str = "\n".join*(contexts)
+    contexts_str = "\n".join(contexts)
 
     chunk_id = item["chunk_id"]
     logger.info(f"[{chunk_id}] 쓰레드 작업 시작...")
@@ -204,7 +202,7 @@ def extract_data(llm_manager, item, schema, json_dir, toc_json):
 def merge_data(llm_manager, json_list, schema):
     """추출된 JSON 형태의 데이터 병합"""
     
-    json_str = json.dumps(json_list, ensure_ascii=False, indent=2)
+    json_str = json.dumps(json_list, ensure_ascii=False, separators=(',', ':'))
 
     prompt = """
     [역할]
@@ -268,7 +266,7 @@ def main():
     logger.info("병렬 데이터 추출 시작...")
     all_json_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema, json_dir): item for item in payload_queue}
+        future_to_chunk = {executor.submit(extract_data, llm_manager, item, json_schema, json_dir, toc_json): item for item in payload_queue}
 
         for future in concurrent.futures.as_completed(future_to_chunk):
             try:

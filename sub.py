@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import pymupdf as fitz
 
 from functools import wraps
 from collections import deque
@@ -14,6 +15,28 @@ from google import genai
 
 from pathlib import Path
 import shutil
+
+
+def setup_environment():
+    """프로그램 실행 시 1회 호출되어 로깅 및 외부 라이브러리 전역 설정을 수행합니다."""
+    file_handler = logging.FileHandler("Project.log", encoding="utf-8")
+    console_handler = logging.StreamHandler(sys.stdout)
+
+    file_formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+    file_handler.setFormatter(file_formatter)
+
+    console_formatter = logging.Formatter('%(message)s')
+    console_handler.setFormatter(console_formatter)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[file_handler, console_handler]
+    )
+
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("google_genai").setLevel(logging.WARNING)
+    
+    fitz.TOOLS.mupdf_display_errors(False)
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +53,7 @@ def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
             while True:
                 try:
                     return func(*args, **kwargs)
+                
                 except Exception as e:
                     error_str = str(e)
 
@@ -160,7 +184,7 @@ class LLMCallManager:
                 if "429" in str(e) or "RESOURCE EXHAUSTED" in str(e).upper():
                     with self.lock:
                         if self.current_model_idx == attempted_idx:
-                            logger.warning(f"[{current_model}] 일일 할당량 소진: {e}")
+                            logger.warning(f"[{current_model}] 일일 할당량 소진")
                             self.current_model_idx += 1
 
                             if self.current_model_idx >= len(self.model_list):
