@@ -6,6 +6,7 @@ import pymupdf as fitz
 import pymupdf4llm as p4l
 import logging
 import json
+import re
 import sys
 import concurrent.futures
 # import pandas as pd
@@ -24,6 +25,69 @@ logger = logging.getLogger(__name__)
 
 
 fitz.TOOLS.mupdf_display_errors(False)
+
+
+def toc_extraction(llm_manager, md_pages):
+    """최초 1회 실행: 문서 앞부분(목차)을 읽어 트리 구조 생성"""
+    toc_text = "\n\n---\n\n".join([p["text"] for p in md_pages[:15]])
+
+    prompt = """
+    [역할]
+    당신은 방대한 공공 문서의 목차(Table of Contents) 텍스트를 분석하여, 문서의 '계층적 트리 구조(Hierarchy)'와 '페이지 맵(Page Map)'을 정확하게 추출하는 무결성 데이터 파싱 엔진입니다.
+
+    [작업 지시]
+    입력된 목차 마크다운 텍스트를 분석하여 각 섹션의 상하위 계층 구조를 파악하고, 시작 페이지와 끝 페이지를 계산하여 엄격한 JSON 형태로 출력하십시오.
+
+    [출력 JSON 구조 예시]
+    {
+    "page_1_5": "Ⅰ. 계획의 개요",
+    "page_6_59": "Ⅱ. 지역 특성 및 배출 현황",
+    "page_60_69": "Ⅵ. 기본계획 추진과제 > 1. 감축 대책 > 1-1. 건물 부문",
+    "page_70_78": "Ⅵ. 기본계획 추진과제 > 1. 감축 대책 > 1-2. 수송 부문"
+    }
+
+    [절대 준수 규칙 - 위반 시 시스템 치명적 오류 발생]
+    1. 계층 연결(Breadcrumb): 대분류, 중분류, 소분류 등 종속 관계를 파악하여 ` > ` 기호로 연결한 단일 문자열로 만드십시오. (단일 계층일 경우 그대로 출력)
+    2. 페이지 범위(Range) 계산: 
+    - 목차에 명시된 해당 섹션의 '시작 페이지'부터, '다음 섹션이 시작되기 직전 페이지'까지를 해당 섹션의 범위(`page_시작_끝`)로 계산하십시오.
+    - 하위 계층(소분류)이 존재하는 경우, 상위 계층(대분류)의 단독 페이지 범위는 생성하지 마십시오. 가장 텍스트가 밀집된 최하위 계층(Leaf Node)을 기준으로 매핑하십시오.
+    3. 표 목차(List of Tables)와 그림 목차(List of Figures) 섹션에 나열된 모든 항목은 문서의 논리적 뼈대가 아니므로 파싱 대상에서 완벽히 제외하십시오. 오직 텍스트 본문의 목차만 추출하십시오.
+    4. 노이즈 제거: "목차", "Page", 점선("....") 등 구조와 무관한 OCR 파편이나 시각적 기호는 완전히 무시하십시오.
+    5. 순수 JSON 출력: 어떠한 설명, 인사말, 마크다운 코드 블록(```json) 표기 없이 오직 유효한 JSON 객체 하나만 출력하십시오.
+    """
+
+    contents = [prompt, toc_text]
+
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        temperature=0.0
+    )
+
+    response = llm_manager.call_llm_api(contents, config)
+
+    if response and response.text:
+        return json.loads(response.text)
+    return {}
+
+
+def get_context_for_chunk(start_page, end_page, toc_json):
+    """현재 청크의 페이지 번호가 속한 계층(Context)을 찾아 반환"""
+    contexts_found = []
+
+    for page_range, hierarchy in toc_json.items():
+
+        match = re.match(r"page_(\d+)_(\d+)", page_range)
+        if match:
+            start_p, end_p = int(match.group(1)), int(match.group(2))
+
+            if max(start_page, start_p) <= min(end_page, end_p):
+                if hierarchy not in contexts_found:
+                    contexts_found.append(hierarchy)
+            
+    if not contexts_found:
+        return ["알 수 없는 부문 (문맥 추론 필요)"]
+        
+    return contexts_found
 
 
 def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
@@ -85,15 +149,21 @@ def load_json_schema():
         raise je
 
 
-def extract_data(llm_manager, item, schema, json_dir):
+def extract_data(llm_manager, item, schema, json_dir, toc_json):
     """청크로부터 JSON 형태의 데이터 추출"""
-    llm_manager = llm_manager
+    start_p, end_p = map(int, item["chunk_id"].split("-"))
+    contexts = get_context_for_chunk(start_p, end_p, toc_json)
+    contexts_str = "\n".join*(contexts)
 
     chunk_id = item["chunk_id"]
     logger.info(f"[{chunk_id}] 쓰레드 작업 시작...")
 
-    prompt = """
+    prompt = f"""
     제공된 JSON 스키마에 따라 정확하게 데이터를 추출하시오.
+
+    [CRITICAL CONTEXT]
+    이 청크의 원본 데이터는 문서의 다음 섹션(들)에 걸쳐 있습니다:
+    {contexts_str}
 
     [데이터 전처리 및 보정 지침]
     제공된 마크다운 텍스트는 PDF에서 기계적으로 추출되었기 때문에 시각적 레이아웃 파편(오류)이 포함되어 있습니다. 데이터를 추출할 때 다음 규칙을 반드시 적용하십시오.
@@ -184,13 +254,16 @@ def main():
         show_progress=True
     )
 
+    llm_manager = LLMCallManager()
+
+    logger.info("문서 계층 구조 파싱 중...")
+    toc_json = toc_extraction(llm_manager, md_pages)
+
     logger.info("텍스트 청킹 및 로컬 이미지 매핑 중...")
     payload_queue = chunk_contents(text_dir, image_dir, pdf_name, md_pages)    
 
     logger.info("JSON 스키마 로드 중...")
     json_schema = load_json_schema()
-
-    llm_manager = LLMCallManager()
 
     logger.info("병렬 데이터 추출 시작...")
     all_json_results = []
