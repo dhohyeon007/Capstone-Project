@@ -11,14 +11,13 @@ import time
 import random
 
 from google import genai
-# from google.genai import types
 
 from pathlib import Path
 import shutil
 
 
 def setup_environment():
-    """프로그램 실행 시 1회 호출되어 로깅 및 외부 라이브러리 전역 설정을 수행합니다."""
+    """프로그램 실행 시 1회 호출되어 로깅 및 외부 라이브러리 전역 설정을 담당"""
     file_handler = logging.FileHandler("Project.log", encoding="utf-8")
     console_handler = logging.StreamHandler(sys.stdout)
 

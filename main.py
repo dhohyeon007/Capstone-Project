@@ -130,7 +130,7 @@ def chunk_contents(text_dir, image_dir, pdf_name, md_pages, chunk_size=7):
 
 def load_json_schema():
     """스키마 파일 로드"""
-    schema_file_path = "extraction_schema.json"
+    schema_file_path = "schema.json"
     
     try:
         with open(schema_file_path, "r", encoding="utf-8") as f:

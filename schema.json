@@ -1,0 +1,330 @@
+{
+  "type": "OBJECT",
+  "description": "지자체 공문서에서 추출한 탄소중립 녹색성장 기본계획 데이터 구조",
+  "properties": {
+    "sheet1_basic_overview": {
+      "type": "OBJECT",
+      "description": "Sheet 1. 지자체 기본계획 개요 (기본 정보)",
+      "properties": {
+        "local_government_name": {
+          "type": "STRING",
+          "description": "지자체명 (예: OO시, OO구)"
+        },
+        "local_government_type": {
+          "type": "STRING",
+          "enum": ["도시집중형", "산업·발전특화형", "복합형", "흡수형"],
+          "description": "지자체 유형"
+        },
+        "planning_period": {
+          "type": "STRING",
+          "description": "계획 기간 및 시간적 범위 (예: 2025 ~ 2034년)"
+        },
+        "carbon_neutral_vision": {
+          "type": "STRING",
+          "description": "지자체가 지향하는 장기적 미래상 및 탄소중립 비전"
+        },
+        "main_department": {
+          "type": "STRING",
+          "description": "기본계획 수립 및 추진상황 점검을 총괄하는 부서명"
+        },
+        "responsible_officer": {
+          "type": "STRING",
+          "description": "탄소중립이행책임관의 부서장 또는 책임관 직위"
+        }
+      },
+      "required": [
+        "local_government_name",
+        "local_government_type",
+        "planning_period",
+        "carbon_neutral_vision",
+        "main_department",
+        "responsible_officer"
+      ]
+    },
+    "sheet2_ghg_emissions": {
+      "type": "ARRAY",
+      "description": "Sheet 2. 온실가스 배출 현황 및 중장기 감축 목표 리스트",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "sector": {
+            "type": "STRING",
+            "description": "부문 구분 (예: 총괄, 건물(가정), 건물(상업·공공), 수송, 농축산, 폐기물, 흡수원, 전환, 산업 등)"
+          },
+          "base_year": {
+            "type": "INTEGER",
+            "description": "온실가스 산정 기준 연도 (기본값: 2018)"
+          },
+          "base_year_emissions": {
+            "type": "NUMBER",
+            "description": "기준연도 배출량 (단위: 천톤CO2eq)"
+          },
+          "target_year_bau": {
+            "type": "NUMBER",
+            "description": "특정 목표 연도의 예상 배출량 전망치(BAU)"
+          },
+          "target_reduction_amount": {
+            "type": "NUMBER",
+            "description": "목표 감축량 (단위: 천톤CO2eq)"
+          },
+          "target_emissions": {
+            "type": "NUMBER",
+            "description": "목표 배출량 (단위: 천톤CO2eq)"
+          },
+          "target_reduction_rate": {
+            "type": "NUMBER",
+            "description": "기준연도 대비 감축 퍼센티지 (단위: %)"
+          },
+          "additional_target_indicators": {
+            "type": "STRING",
+            "description": "선택 항목: 온실가스 원단위(인구당, 면적당 배출량 등) 추가 지표"
+          }
+        },
+        "required": [
+          "sector",
+          "base_year",
+          "base_year_emissions",
+          "target_year_bau",
+          "target_reduction_amount",
+          "target_emissions",
+          "target_reduction_rate"
+        ]
+      }
+    },
+    "sheet3_reduction_tasks": {
+      "type": "ARRAY",
+      "description": "Sheet 3. 부문별 온실가스 감축대책 세부 과제(관리카드) 리스트",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "task_id": {
+            "type": "STRING",
+            "description": "과제 관리번호 (예: 건물-1, 수송-2)"
+          },
+          "sector": {
+            "type": "STRING",
+            "description": "감축 부문 (건물, 수송, 농축산, 폐기물, 흡수원 등)"
+          },
+          "task_name": {
+            "type": "STRING",
+            "description": "세부 감축 사업명 및 추진과제명"
+          },
+          "project_type": {
+            "type": "STRING",
+            "enum": ["기존", "변경", "신규"],
+            "description": "사업 유형 구분"
+          },
+          "lead_department": {
+            "type": "STRING",
+            "description": "과제를 실제 이행하는 총괄 주관부서"
+          },
+          "cooperating_department": {
+            "type": "STRING",
+            "description": "협조 또는 소관 부서"
+          },
+          "project_details": {
+            "type": "STRING",
+            "description": "사업의 구체적인 목표 및 주요 내용 설명"
+          },
+          "performance_indicator": {
+            "type": "STRING",
+            "description": "성과지표 (예: 전기차 보급대수, 태양광 설치용량(kW) 등)"
+          },
+          "expected_reduction_effect": {
+            "type": "NUMBER",
+            "description": "온실가스 예상 감축효과 (단위: 톤CO2eq)"
+          },
+          "total_budget": {
+            "type": "NUMBER",
+            "description": "사업 전체에 소요되는 총 예산 (단위: 백만원)"
+          },
+          "annual_implementation_plans": {
+            "type": "ARRAY",
+            "description": "연차별로 할당된 세부 사업 물량 및 목표량 계획",
+            "items": {
+              "type": "OBJECT",
+              "properties": {
+                "year": { "type": "INTEGER", "description": "계획 연도 (예: 2025)" },
+                "target_volume": { "type": "STRING", "description": "해당 연도의 목표 세부 사업물량" }
+              },
+              "required": ["year", "target_volume"]
+            }
+          }
+        },
+        "required": [
+          "task_id",
+          "sector",
+          "task_name",
+          "project_type",
+          "lead_department",
+          "project_details",
+          "performance_indicator",
+          "expected_reduction_effect",
+          "total_budget",
+          "annual_implementation_plans"
+        ]
+      }
+    },
+    "sheet4_adaptation_tasks": {
+      "type": "ARRAY",
+      "description": "Sheet 4. 기후위기 적응 및 대응기반 강화대책 과제 리스트",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "task_id": {
+            "type": "STRING",
+            "description": "과제 관리번호 (예: 적응-1, 교육-2)"
+          },
+          "sector": {
+            "type": "STRING",
+            "enum": [
+              "기후위기 적응",
+              "공유재산 대응",
+              "국제 및 지자체 협력",
+              "교육·소통",
+              "녹색성장 촉진",
+              "청정에너지 전환",
+              "정의로운 전환",
+              "인력양성"
+            ],
+            "description": "강화대책 세부 부문"
+          },
+          "task_name": {
+            "type": "STRING",
+            "description": "세부 과제명 및 추진과제명"
+          },
+          "policy_direction_and_details": {
+            "type": "STRING",
+            "description": "추진 배경, 정책 방향 및 구체적 실행 내용"
+          },
+          "responsible_department": {
+            "type": "STRING",
+            "description": "이행 담당 소관부서"
+          },
+          "project_type": {
+            "type": "STRING",
+            "enum": ["기존", "신규", "변경"],
+            "description": "사업 유형"
+          }
+        },
+        "required": [
+          "task_id",
+          "sector",
+          "task_name",
+          "policy_direction_and_details",
+          "responsible_department",
+          "project_type"
+        ]
+      }
+    },
+    "sheet5_financial_plan": {
+      "type": "ARRAY",
+      "description": "Sheet 5. 연도별/재원별 재정투자 계획 리스트",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "major_category": {
+            "type": "STRING",
+            "enum": ["온실가스 감축대책", "대응기반 강화대책", "기타"],
+            "description": "투자 대분류"
+          },
+          "sub_category": {
+            "type": "STRING",
+            "description": "중분류 부문 (예: 건물, 수송, 농축산 등)"
+          },
+          "funding_source": {
+            "type": "STRING",
+            "description": "재원 구분 (예: 총계, 국비, 시·도비, 시·군·구비, 민간 자본 등)"
+          },
+          "annual_budgets": {
+            "type": "ARRAY",
+            "description": "연차별 예산 편성 현황 (단위: 억원)",
+            "items": {
+              "type": "OBJECT",
+              "properties": {
+                "year_range": {
+                  "type": "STRING",
+                  "description": "예산 할당 연도 또는 단일 기간 (예: '2025', '2026', '2030~2034')"
+                },
+                "budget_amount": {
+                  "type": "NUMBER",
+                  "description": "해당 연도/기간의 예산 편성액 (단위: 억원)"
+                }
+              },
+              "required": ["year_range", "budget_amount"]
+            }
+          }
+        },
+        "required": ["major_category", "sub_category", "funding_source", "annual_budgets"]
+      }
+    },
+    "sheet6_evaluation_results": {
+      "type": "ARRAY",
+      "description": "Sheet 6. 연례 보고용 추진상황 점검 및 평가 결과 리스트",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "evaluation_year": {
+            "type": "INTEGER",
+            "description": "평가 대상 점검 연도 (예: 2025)"
+          },
+          "task_id": {
+            "type": "STRING",
+            "description": "Sheet 3, 4와 연동되는 매핑용 과제 관리번호"
+          },
+          "task_name": {
+            "type": "STRING",
+            "description": "Sheet 3, 4와 연동되는 매핑용 추진과제명"
+          },
+          "current_year_plan": {
+            "type": "STRING",
+            "description": "당해연도 목표 수치 또는 계획 내용"
+          },
+          "current_year_performance": {
+            "type": "STRING",
+            "description": "당해연도 실제 달성 수치 또는 이행 현황 실적"
+          },
+          "current_year_budget_spent": {
+            "type": "NUMBER",
+            "description": "당해연도 실제 집행된 소요예산 집행액"
+          },
+          "achievement_status": {
+            "type": "STRING",
+            "enum": ["달성", "정상추진", "지연", "미달성"],
+            "description": "달성 여부 평가 결과"
+          },
+          "delay_reason": {
+            "type": "STRING",
+            "description": "선택 항목: 목표 달성 실패 또는 지연 시 구체적인 원인 기재"
+          },
+          "action_plan": {
+            "type": "STRING",
+            "description": "차년도 재원 추가 확보, 계획 보완 등 조치 계획 및 환류 내용"
+          },
+          "committee_demands": {
+            "type": "STRING",
+            "description": "선택 항목: 탄소중립녹색성장위원회의 개선명령 내역 및 조치 결과 요구사항"
+          }
+        },
+        "required": [
+          "evaluation_year",
+          "task_id",
+          "task_name",
+          "current_year_plan",
+          "current_year_performance",
+          "current_year_budget_spent",
+          "achievement_status",
+          "action_plan"
+        ]
+      }
+    }
+  },
+  "required": [
+    "sheet1_basic_overview",
+    "sheet2_ghg_emissions",
+    "sheet3_reduction_tasks",
+    "sheet4_adaptation_tasks",
+    "sheet5_financial_plan",
+    "sheet6_evaluation_results"
+  ]
+}
