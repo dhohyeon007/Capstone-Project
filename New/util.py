@@ -1,4 +1,3 @@
-import os
 import sys
 import json
 import logging
@@ -34,31 +33,38 @@ logger = logging.getLogger(__name__)
 
 def select_file():
     """선택한 파일의 경로 반환"""
-    current_dir = os.getcwd()
+    current_dir = Path.cwd()
 
     while True:
         items = [
-            entry.name for entry in os.scandir(current_dir)
-            if entry.name.endswith(".pdf") or entry.is_dir()
+            entry for entry in current_dir.iterdir()
+            if entry.is_dir() or entry.suffix.lower() == ".pdf"
         ]
-        print(f"현재 디렉토리: {current_dir}")
-        print("0. ..")
-        for i, item in enumerate(items, 1):
-            print(f"{i}. {item}")
+        print(f"Current directory: {current_dir}")
+        print("0. .. (Parent directory)")
 
-        choice = input("파일 선택 혹은 디렉토리 이동 (숫자 입력): ")
+        for i, item in enumerate(items, 1):
+            display_name = f"{item.name}/" if item.is_dir() else item.name
+            print(f"{i}. {display_name}")
+
+        choice = input("Select file or directory (Enter number, -1 to quit): ")
+
         if choice == "-1":
             # epilogue()
             sys.exit(0)
+
         elif choice == "0":
-            current_dir = os.path.dirname(current_dir)
+            current_dir = current_dir.parent
+
         else:
             try:
-                target_path = os.path.join(current_dir, items[int(choice) - 1])
-                if os.path.isdir(target_path):
-                    current_dir = target_path
+                selected_item = items[int(choice) - 1]
+
+                if selected_item.is_dir():
+                    current_dir = selected_item
                 else:
-                    return target_path
+                    return str(selected_item)
+                
             except (ValueError, IndexError):
                 print("다시 시도하십시오.")
 
