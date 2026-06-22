@@ -145,7 +145,7 @@ class LLMCaller:
             except APIError as e:
                 if e.code == 429:
                     is_rpd_limit = self.parse_429_error_msg(str(e))
-                    # attempted_model_idx 확인을 통해 여러 스렏가 동시에 에러를 받았을 때 중복 스위칭 방지
+                    # attempted_model_idx 확인을 통해 여러 스레드가 동시에 에러를 받았을 때 중복 스위칭 방지
                     if is_rpd_limit and self.current_model_idx == attempted_model_idx:
                         logger.warning("[RPD Limit] Resource exhausted. Changing model...")
                         self.switch_model()
