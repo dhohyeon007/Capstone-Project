@@ -1,180 +1,162 @@
-import os
-import time
-import json
-import random
-import threading
-import logging
-import re
-from util import setup_environment
-from collections import deque
-from functools import wraps
 from google import genai
-
-
-setup_environment()
+from google.genai import types
+from google.genai.errors import APIError
+from dotenv import load_dotenv
+from collections import deque
+import os
+import sys
+import json
+import threading
+import time
+import logging
 
 
 logger = logging.getLogger(__name__)
 
 
-def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
-    """최대 허용 시간(5분) 내에서 지수 백오프로 재시도하는 데코레이터"""
-    def deco(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            retries = 0
-
-            while True:
-                try:
-                    return func(*args, **kwargs)
-                
-                except Exception as e:
-                    error_str = str(e)
-
-                    if "429" in error_str or "RESOURCE EXHAUSTED" in error_str:
-                        is_rpd_limit = False
-
-                        try:
-                            json_start_idx = error_str.find('{')
-                            if json_start_idx != -1:
-                                error_str_json = error_str[json_start_idx:]
-                                error_dict = json.loads(error_str_json.replace("'", '"'))
-
-                                details = error_dict.get('error', {}).get('details', [])
-                                for detail in details:
-                                    violations = detail.get('violations', [])
-                                    for violation in violations:
-                                        quota_id = violation.get('quotaId', '').lower()
-
-                                        if 'perday' in quota_id:
-                                            is_rpd_limit = True
-                                            break
-
-                                    if is_rpd_limit:
-                                        break
-                            
-                        except Exception as parse_error:
-                            logger.debug(f"429 에러 JSON 파싱 실패: {parse_error}")
-
-                        error_str_lower = error_str.lower()
-                        if not is_rpd_limit and ("perday" in error_str_lower or "per day" in error_str_lower):
-                            is_rpd_limit = True
-
-                        if is_rpd_limit:
-                            raise e
-                        else:
-                            pass
-                    
-                    elif not any(code in error_str for code in ["500", "502", "503", "504"]):
-                        raise e
-                    
-                    elapsed_time = time.time() - start_time
-                    if elapsed_time >= max_duration:
-                        logger.error("최대 허용 시간 초과.")
-                        raise e
-                    
-                    retries += 1
-                    jitter = random.uniform(-0.2, 0.2)
-                    exp_delay = base_delay * (2 ** (retries - 1))
-                    wait_time = min((exp_delay + jitter), max_delay)
-
-                    remaining_time = max_duration - elapsed_time
-                    if wait_time > remaining_time:
-                        wait_time = remaining_time
-
-                    logger.warning(f"{wait_time:.2f}초 대기 후 재시도합니다. (사유: {e})")
-                    time.sleep(wait_time)
-
-        return wrapper
-    return deco
-
-
-class LLMCallManager:
+class LLMCaller:
     def __init__(self):
-        self.client = genai.Client(api_key=os.environ.get('GOOGLE_API_KEY'))
+        # Read-Only
+        self.http_options = types.HttpOptions(
+            retry_options=types.HttpRetryOptions(
+                initial_delay=1.0,
+                max_delay=10.0,
+                exp_base=2.0,
+                jitter=0.2
+            ),
+            timeout=300000
+        )
+        load_dotenv()
         self.model_list = [
-            {'name': 'gemini-3.5-flash', 'rpm': 5},
-            {'name': 'gemini-3-flash-preview', 'rpm': 5},
-            {'name': 'gemini-3.1-flash-lite', 'rpm': 15},
-            {'name': 'gemini-2.5-flash', 'rpm': 5},
-            {'name': 'gemini-2.5-flash-lite', 'rpm': 10},
+            {'name':'gemini-3.5-flash', 'rpm':5},
+            {'name':'gemini-3-flash-preview', 'rpm':5},
+            {'name':'gemini-3.1-flash-lite', 'rpm':15},
         ]
+        
+
+        # Read/Write
+        self.api_key_idx = 1
+        self.api_key = os.getenv(f"GEMINI_API_KEY_{self.api_key_idx}")
+        self.client = genai.Client(
+            api_key=self.api_key,
+            http_options=self.http_options
+        )
         self.current_model_idx = 0
-        self.max_requests = self.model_list[self.current_model_idx]['rpm']
         self.request_queue = deque()
+
+        # Lock
         self.lock = threading.Lock()
 
 
     def acquire_slot(self):
-        """RPM 제한 방어 코드"""
+        """RPM 으로 인한 일일 할당량 사용 방지"""
+        while True:
+            wait_time = 0
+
+            with self.lock:
+                current_time = time.time()
+
+                while current_time - self.request_queue[0] > 60:
+                    self.request_queue.popleft()
+
+                max_requests = self.model_list[self.current_model_idx]['rpm']
+
+                if len(self.request_queue) >= max_requests:
+                    wait_time = 60 - (current_time - self.request_queue[0])
+                else:
+                    self.request_queue.append(current_time)
+                    return
+
+            if wait_time > 0:
+                logger.warning(f"RPM Break: Wait {wait_time:.2f} seconds...")
+                time.sleep(wait_time)
+
+
+    def parse_429_error_msg(self, error_str):
+        """429 에러 메시지를 파싱하여 RPD 제한 여부를 반환"""
+        is_rpd_limit = False
+
+        try:
+            json_start_idx = error_str.find('{')
+            if json_start_idx != -1:
+                error_json = error_str[json_start_idx:]
+                error_dict = json.loads(error_json.replace("'", '"'))
+
+                details = error_dict.get('error', {}).get('details', [])
+                for detail in details:
+                    violations = detail.get('violations', [])
+                    for violation in violations:
+                        quota_id = violation.get('quotaId', '').lower()
+
+                        if 'perday' in quota_id:
+                            is_rpd_limit = True
+                            break
+
+                    if is_rpd_limit:
+                        break
+
+        except Exception as e:
+            logger.debug(f"Failed to parse 429 error JSON: {e}")
+
+        return is_rpd_limit
+
+    
+    def switch_model(self):
         with self.lock:
-            current_time = time.time()
+            self.current_model_idx += 1
 
-            while self.request_queue and current_time - self.request_queue[0] > 60:
-                self.request_queue.popleft()
-
-            if len(self.request_queue) >= self.max_requests:
-                wait_time = 60 - (current_time - self.request_queue[0])
-
-                if wait_time > 0:
-                    logger.warning(f"RPM Break: {wait_time:.2f}초 대기")
-                    time.sleep(wait_time)
-
-                self.request_queue.popleft()
+            if self.current_model_idx >= len(self.model_list):
+                logger.warning("Models exhausted. Changing API key...")
+                self.switch_api_key()
             
-            self.request_queue.append(time.time())
+            self.request_queue.clear()
 
 
-    @retry_with_backoff(
-            max_duration=300,
-            base_delay=1,
-            max_delay=10
-    )
-    def execute_api_call(self, current_model, contents, config):
-        """실제 API 호출하는 내부 메서드(재시도 로직 적용)"""
-        return self.client.models.generate_content(
-            model=current_model,
-            contents=contents,
-            config=config
-        )
+    def switch_api_key(self):
+        """switch_model에서 lock 보유한 채로 실행"""
+        self.api_key_idx += 1
+        self.api_key = os.getenv(f"GEMINI_API_KEY_{self.api_key_idx}")
+        if self.api_key is None:
+            logger.error("API key exhausted. Terminating program.")
+            sys.exit(1)
+        else:
+            self.client = genai.Client(
+                api_key=self.api_key,
+                http_options=self.http_options
+            )
+            self.current_model_idx = 0
 
 
-    def call_llm_api(self, contents, config):
-        """외부에서 호출하는 메서드(모델 스위칭 담당)"""
+    def call_llm(self, contents, config):
         while True:
             self.acquire_slot()
 
             with self.lock:
-                if self.current_model_idx >= len(self.model_list):
-                    raise RuntimeError("모든 모델 소진됨")
-                
-                current_model = self.model_list[self.current_model_idx]['name']
-                attempted_idx = self.current_model_idx
+                current_model_name = self.model_list[self.current_model_idx]['name']
+                attempted_model_idx = self.current_model_idx
 
             try:
-                return self.execute_api_call(current_model, contents, config)                
-                    
-            except Exception as e:
-                if "429" in str(e) or "RESOURCE EXHAUSTED" in str(e).upper():
-                    with self.lock:
-                        if self.current_model_idx == attempted_idx:
-                            logger.warning(f"[{current_model}] 일일 할당량 소진")
-                            self.current_model_idx += 1
+                return self.client.models.generate_content(
+                    model=current_model_name,
+                    contents=contents,
+                    config=config
+                )
+            
+            except APIError as e:
+                if e.code == 429:
+                    is_rpd_limit = self.parse_429_error_msg(str(e))
+                    # attempted_model_idx 확인을 통해 여러 스렏가 동시에 에러를 받았을 때 중복 스위칭 방지
+                    if is_rpd_limit and self.current_model_idx == attempted_model_idx:
+                        logger.warning("[RPD Limit] Resource exhausted. Changing model...")
+                        self.switch_model()
+                    else:
+                        # RPD가 아닌 RPM, TPM 한도 초과라면 다시 루프를 돌아 acquire_slot에서 대기
+                        pass
 
-                            if self.current_model_idx >= len(self.model_list):
-                                logger.error("더 이상 사용할 수 있는 하위 모델이 없습니다. 종료합니다.")
-                                raise RuntimeError("모든 모델 소진됨")
-
-                            next_model = self.model_list[self.current_model_idx]['name']
-                            self.max_requests = self.model_list[self.current_model_idx]['rpm']
-                            self.request_queue.clear()
-                            logger.warning(f"[{next_model}] 모델로 변경합니다.")
-                        else:
-                            pass
-
+                elif e.code in (500, 502, 503, 504):
+                    # 일시적인 서버 에러는 재시도
                     continue
 
                 else:
-                    logger.error(f"에러 발생: {e}")
-                    raise e
+                    logger.error(f"Error occured while calling LLM: {str(e)}")
+                    sys.exit(1)
