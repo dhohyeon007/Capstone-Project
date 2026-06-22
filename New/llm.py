@@ -1,41 +1,17 @@
 import os
-import sys
-import logging
-import pymupdf as fitz
-
-from functools import wraps
-from collections import deque
-import json
-import threading
 import time
+import json
 import random
-
+import threading
+import logging
+import re
+from util import setup_environment
+from collections import deque
+from functools import wraps
 from google import genai
 
-from pathlib import Path
-import shutil
 
-
-def setup_environment():
-    """프로그램 실행 시 1회 호출되어 로깅 및 외부 라이브러리 전역 설정을 담당"""
-    file_handler = logging.FileHandler("Project.log", encoding="utf-8")
-    console_handler = logging.StreamHandler(sys.stdout)
-
-    file_formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
-    file_handler.setFormatter(file_formatter)
-
-    console_formatter = logging.Formatter('%(message)s')
-    console_handler.setFormatter(console_formatter)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        handlers=[file_handler, console_handler]
-    )
-
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("google_genai").setLevel(logging.WARNING)
-    
-    fitz.TOOLS.mupdf_display_errors(False)
+setup_environment()
 
 
 logger = logging.getLogger(__name__)
@@ -62,8 +38,8 @@ def retry_with_backoff(max_duration=300, base_delay=1, max_delay=10):
                         try:
                             json_start_idx = error_str.find('{')
                             if json_start_idx != -1:
-                                error_json_str = error_str[json_start_idx:]
-                                error_dict = json.loads(error_json_str.replace("'", '"'))
+                                error_str_json = error_str[json_start_idx:]
+                                error_dict = json.loads(error_str_json.replace("'", '"'))
 
                                 details = error_dict.get('error', {}).get('details', [])
                                 for detail in details:
@@ -202,61 +178,3 @@ class LLMCallManager:
                 else:
                     logger.error(f"에러 발생: {e}")
                     raise e
-
-
-def select_file():
-    """선택한 파일의 경로 반환"""
-    current_dir = os.getcwd()
-
-    while True:
-        items = [
-            entry.name for entry in os.scandir(current_dir)
-            if entry.name.endswith(".pdf") or entry.is_dir()
-        ]
-        print(f"현재 디렉토리: {current_dir}")
-        print("0. ..")
-        for i, item in enumerate(items, 1):
-            print(f"{i}. {item}")
-
-        choice = input("파일 선택 혹은 디렉토리 이동 (숫자 입력): ")
-        if choice == "-1":
-            epilogue()
-            sys.exit(0)
-        elif choice == "0":
-            current_dir = os.path.dirname(current_dir)
-        else:
-            try:
-                target_path = os.path.join(current_dir, items[int(choice) - 1])
-                if os.path.isdir(target_path):
-                    current_dir = target_path
-                else:
-                    return target_path
-            except (ValueError, IndexError):
-                print("다시 시도하십시오.")
-
-
-def prologue():
-    """임시 파일 저장 디렉토리 생성"""
-    parent_dir = Path("data")
-    text_dir = parent_dir / "text"
-    image_dir = parent_dir / "images"
-    json_dir = Path("json")
-
-    parent_dir.mkdir(exist_ok=True)
-    text_dir.mkdir(exist_ok=True)
-    image_dir.mkdir(exist_ok=True)
-    json_dir.mkdir(exist_ok=True)
-
-    return text_dir, image_dir, json_dir
-
-
-def epilogue():
-    """임시 파일 및 디렉토리 삭제"""
-    parent_dir = Path("data")
-
-    if parent_dir.exists() and parent_dir.is_dir():
-        try:
-            shutil.rmtree(parent_dir)
-            logger.info("data 디렉토리 삭제 완료.")
-        except Exception as e:
-            logger.error(f"디렉토리 삭제 중 오류 발생: {e}")
