@@ -32,7 +32,6 @@ class LLMCaller:
             {'name':'gemini-3-flash-preview', 'rpm':5},
             {'name':'gemini-3.1-flash-lite', 'rpm':15},
         ]
-        
 
         # Read/Write
         self.api_key_idx = 1
@@ -102,6 +101,7 @@ class LLMCaller:
 
     
     def switch_model(self):
+        """일일 할당량 소진 시 모델 스위칭"""
         with self.lock:
             self.current_model_idx += 1
 
@@ -113,7 +113,7 @@ class LLMCaller:
 
 
     def switch_api_key(self):
-        """switch_model에서 lock 보유한 채로 실행"""
+        """모델 소진 시 API 키 스위칭 (switch_model()에서 Lock을 보유한 채로 수행)"""
         self.api_key_idx += 1
         self.api_key = os.getenv(f"GEMINI_API_KEY_{self.api_key_idx}")
         if self.api_key is None:
@@ -128,6 +128,7 @@ class LLMCaller:
 
 
     def call_llm(self, contents, config):
+        """LLM API 호출 및 에러 코드 별 에러 처리"""
         while True:
             self.acquire_slot()
 

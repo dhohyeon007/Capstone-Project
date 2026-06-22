@@ -10,18 +10,21 @@ image_dir_path = data_dir_path / "images"
 
 
 def pdf_to_markdown(pdf_file_path):
+    """단일 마크다운 파일 생성"""
     md_text = pymupdf4llm.to_markdown(
         pdf_file_path,
         write_images=True,
         image_path=str(image_dir_path),
         show_progress=True
     )
+
     page_count = len(fitz.open(pdf_file_path))
     text_file_path = text_dir_path / f"Markdown-{1}-{page_count}.md"
     text_file_path.write_text(md_text, encoding="utf-8")
 
 
 def pdf_to_markdown_chunks(pdf_file_path, chunk_size=15 ,overlap=2):
+    """페이지 오버랩 적용된 마크다운 청크 파일 생성"""
     md_pages = pymupdf4llm.to_markdown(
         pdf_file_path,
         page_chunks=True,
@@ -45,17 +48,18 @@ def pdf_to_markdown_chunks(pdf_file_path, chunk_size=15 ,overlap=2):
 
 
 def construct_payload():
+    """(텍스트, 이미지 리스트) 페이로드 구성"""
     text_path_list = list(text_dir_path.iterdir())
     image_path_list = list(image_dir_path.iterdir())
-    payload = []
+    payload_list = []
 
     if len(text_path_list) == 1:
         # [[text, [images]]]
         single_payload = []
         single_payload.append(text_path_list[0])
         single_payload.append(image_path_list)
-        payload.append(single_payload)
-        return payload
+        payload_list.append(single_payload)
+        return payload_list
     
     else:
         # [[text, [images]], [text, [images]], ...]
@@ -74,5 +78,5 @@ def construct_payload():
             chunk_payload = []
             chunk_payload.append(text_path)
             chunk_payload.append(matched_images)
-            payload.append(chunk_payload)
-        return payload
+            payload_list.append(chunk_payload)
+        return payload_list

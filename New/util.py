@@ -70,6 +70,7 @@ def select_file():
 
 
 def load_json_schema():
+    """JSON 스키마 파일을 로드"""
     schema_file_path = "schema.json"
     
     try:
