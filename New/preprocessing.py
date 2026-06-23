@@ -1,6 +1,5 @@
 import pymupdf as fitz
 import pymupdf4llm
-import re
 from pathlib import Path
 
 
@@ -11,6 +10,7 @@ image_dir_path = data_dir_path / "images"
 
 def pdf_to_markdown(pdf_file_path):
     """단일 마크다운 파일 생성"""
+    
     md_text = pymupdf4llm.to_markdown(
         pdf_file_path,
         write_images=True,
