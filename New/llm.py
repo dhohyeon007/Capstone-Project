@@ -3,8 +3,8 @@ from google.genai import types
 from google.genai.errors import APIError
 from dotenv import load_dotenv
 from collections import deque
+from error import APIKeyExhaustedError
 import os
-import sys
 import json
 import threading
 import time
@@ -55,7 +55,7 @@ class LLMCaller:
             with self.lock:
                 current_time = time.time()
 
-                while current_time - self.request_queue[0] > 60:
+                while self.request_queue and current_time - self.request_queue[0] > 60:
                     self.request_queue.popleft()
 
                 max_requests = self.model_list[self.current_model_idx]['rpm']
@@ -117,8 +117,7 @@ class LLMCaller:
         self.api_key_idx += 1
         self.api_key = os.getenv(f"GEMINI_API_KEY_{self.api_key_idx}")
         if self.api_key is None:
-            logger.error("API key exhausted. Terminating program.")
-            sys.exit(1)
+            raise APIKeyExhaustedError()
         else:
             self.client = genai.Client(
                 api_key=self.api_key,
@@ -156,8 +155,12 @@ class LLMCaller:
 
                 elif e.code in (500, 502, 503, 504):
                     # 일시적인 서버 에러는 재시도
+                    time.sleep(2)
                     continue
 
                 else:
-                    logger.error(f"Error occured while calling LLM: {str(e)}")
-                    sys.exit(1)
+                    raise e
+
+
+    def get_current_rpm(self):
+        return self.model_list[self.current_model_idx]['rpm']
