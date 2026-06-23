@@ -1,7 +1,7 @@
+from preprocessing import *
 from llm import LLMCaller
+from orchestrator import *
 from util import *
-from pdf_preprocessing import *
-from chunk_processing import *
 import logging
 
 
@@ -14,17 +14,26 @@ def main():
     # 1. 파일 선택
     pdf_file_path = select_file()
 
-    # 2. 임시 파일 디렉토리 생성
-    generate_dir()
+    try:
+        # 2. 임시 파일 디렉토리 생성
+        generate_dir()
 
-    # 3. 텍스트 및 이미지 추출
-    # pdf_to_markdown(pdf_file_path)
-    pdf_to_markdown_chunks(pdf_file_path)
+        # 3. 텍스트 및 이미지 추출
+        # pdf_to_markdown(pdf_file_path)
+        pdf_to_markdown_chunks(pdf_file_path)
 
-    # 4. 페이로드 구성
-    payload_list = construct_payload()
+        schema = load_json_schema()
 
-    llm_caller = LLMCaller()
+        orchestrator = ChunkProcessor(json_schema=schema)
+
+        results = orchestrator.run_parallel_pipeline()
+
+        if results:
+            merged_result = orchestrator.merge_data(results)
+    except Exception as e:
+        logger.error("Terminating program.")
+    # finally:
+    #     delete_dir()
 
 
 if __name__ == "__main__":
