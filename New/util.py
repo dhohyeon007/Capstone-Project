@@ -50,7 +50,6 @@ def select_file():
         choice = input("Select file or directory (Enter number, -1 to quit): ")
 
         if choice == "-1":
-            # epilogue()
             sys.exit(0)
 
         elif choice == "0":
