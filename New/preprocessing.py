@@ -47,22 +47,20 @@ def pdf_to_markdown_chunks(pdf_file_path, chunk_size=15 ,overlap=2):
             break
 
 
-def construct_payload():
-    """(텍스트, 이미지 리스트) 페이로드 구성"""
+def construct_chunk():
+    """(텍스트, 이미지 리스트) 청크 구성"""
     text_path_list = list(text_dir_path.iterdir())
     image_path_list = list(image_dir_path.iterdir())
-    payload_list = []
+    chunk_path_list = []
 
     if len(text_path_list) == 1:
-        # [[text, [images]]]
-        single_payload = []
-        single_payload.append(text_path_list[0])
-        single_payload.append(image_path_list)
-        payload_list.append(single_payload)
-        return payload_list
+        single_chunk = {}
+        single_chunk['text'] = text_path_list[0]
+        single_chunk['images'] = image_path_list
+        chunk_path_list.append(single_chunk)
+        return chunk_path_list
     
     else:
-        # [[text, [images]], [text, [images]], ...]
         for text_path in text_path_list:
             text_path_split = text_path.stem.split("-")
             start_page_num = int(text_path_split[-2])
@@ -75,8 +73,8 @@ def construct_payload():
                 if start_page_num <= image_page_num <= end_page_num:
                     matched_images.append(image_path)
 
-            chunk_payload = []
-            chunk_payload.append(text_path)
-            chunk_payload.append(matched_images)
-            payload_list.append(chunk_payload)
-        return payload_list
+            chunk = {}
+            chunk['text'] = text_path
+            chunk['images'] = matched_images
+            chunk_path_list.append(chunk)
+        return chunk_path_list
