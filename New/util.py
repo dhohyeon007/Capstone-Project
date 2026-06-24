@@ -1,3 +1,8 @@
+"""
+Utility Functions
+"""
+
+
 import sys
 import json
 import logging
@@ -85,18 +90,21 @@ def load_json_schema():
         raise je
     
 
-data_dir_path = Path("data")
-text_dir_path = data_dir_path / "texts"
-image_dir_path = data_dir_path / "images"
-
-
 def generate_dir():
+    data_dir_path = Path("data")
+    text_dir_path = data_dir_path / "text"
+    image_dir_path = data_dir_path / "image"
+    json_dir_path = data_dir_path / "json"
+    
     data_dir_path.mkdir(exist_ok=True)
     text_dir_path.mkdir(exist_ok=True)
     image_dir_path.mkdir(exist_ok=True)
+    json_dir_path.mkdir(exist_ok=True)
+
+    return data_dir_path, text_dir_path, image_dir_path, json_dir_path
 
 
-def delete_dir():
+def delete_dir(data_dir_path):
     if data_dir_path.exists() and data_dir_path.is_dir():
         try:
             shutil.rmtree(data_dir_path)
