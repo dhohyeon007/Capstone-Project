@@ -1,3 +1,8 @@
+"""
+LLM API Call Manager
+"""
+
+
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -26,7 +31,6 @@ class LLMCaller:
             ),
             timeout=300000
         )
-        load_dotenv()
         self.model_list = [
             {'name':'gemini-3.5-flash', 'rpm':5},
             {'name':'gemini-3-flash-preview', 'rpm':5},
@@ -34,8 +38,11 @@ class LLMCaller:
         ]
 
         # Read/Write
+        load_dotenv()
         self.api_key_idx = 1
         self.api_key = os.getenv(f"GEMINI_API_KEY_{self.api_key_idx}")
+        if not self.api_key:
+            raise ValueError(f"Environment variable GEMINI_API_KEY_{self.api_key_idx} does not exist.")
         self.client = genai.Client(
             api_key=self.api_key,
             http_options=self.http_options
